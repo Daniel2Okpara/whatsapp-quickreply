@@ -9,7 +9,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors()); // In production, replace with specific extension origins
+app.use(cors({
+  origin: '*', // Allow all origins for the Chrome Extension
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Rate Limiting: Max 10 requests per minute per IP

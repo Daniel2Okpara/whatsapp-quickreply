@@ -1,12 +1,15 @@
 services:
   - type: web
     name: wa-quickreply-server
-    env: node
+    runtime: node
     plan: free
     buildCommand: npm install
     startCommand: node server.js
+    healthCheckPath: /health
     envVars:
       - key: PORT
         value: 10000
       - key: OPENAI_API_KEY
-        sync: false
+        generateValue: false # Must be set in Render Dashboard
+      - key: NODE_ENV
+        value: production
