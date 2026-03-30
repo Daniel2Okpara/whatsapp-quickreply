@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: wa-quickreply-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: OPENAI_API_KEY
+        sync: false
