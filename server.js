@@ -16,13 +16,15 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rate Limiting: Max 10 requests per minute per IP
+// Rate Limiting: Max 10 requests per minute per IP (DISABLED for TESTING)
+/*
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 10,
   message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/generate-replies', limiter);
+*/
 
 // Routes
 app.get('/health', (req, res) => {
