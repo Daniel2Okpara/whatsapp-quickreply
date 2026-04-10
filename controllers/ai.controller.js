@@ -13,6 +13,15 @@ exports.generateReplies = async (req, res) => {
     return res.status(500).json({ error: 'AI service unavailable (Missing API Key)' });
   }
 
+  // 1b. Check User Limits (Free Tier = 15 calls)
+  if (req.user && !req.user.isPro) {
+    if (req.user.creditsUsed >= 15) {
+      return res.status(403).json({ error: 'Monthly AI limit reached (15/15). Please upgrade to Professional.', limitReached: true });
+    }
+    req.user.creditsUsed += 1;
+    await req.user.save();
+  }
+
   const openai = new OpenAI({ apiKey: effectiveApiKey });
 
   console.log(`[AI Controller]: Generating context-aware replies. Persona: ${personality || 'Friendly'}. Time: ${timeOfDay || 'Unknown'}`);
@@ -97,6 +106,15 @@ exports.improveMessage = async (req, res) => {
   const effectiveApiKey = apiKey || process.env.OPENAI_API_KEY;
   if (!effectiveApiKey) {
     return res.status(500).json({ error: 'AI service unavailable (Missing API Key)' });
+  }
+
+  // 1b. Check User Limits (Free Tier = 15 calls)
+  if (req.user && !req.user.isPro) {
+    if (req.user.creditsUsed >= 15) {
+      return res.status(403).json({ error: 'Monthly AI limit reached (15/15). Please upgrade to Professional.', limitReached: true });
+    }
+    req.user.creditsUsed += 1;
+    await req.user.save();
   }
 
   const openai = new OpenAI({ apiKey: effectiveApiKey });
