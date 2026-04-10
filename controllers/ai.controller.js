@@ -20,11 +20,11 @@ exports.generateReplies = async (req, res) => {
   try {
     // 2. Strong Personality Mapping
     const pRules = {
-      funny: "Use light humor, a very casual tone, and 1-2 relevant emojis. Be witty but helpful.",
-      friendly: "Be warm, relaxed, and conversational. Use friendly emojis if appropriate. Sound like a close acquaintance.",
-      professional: "Be polite, structured, and formal. No emojis. Focus on clarity and professional courtesy.",
-      short: "Be extremely concise and direct. Max 10-12 words. No fluff.",
-      casual: "Unfiltered, relaxed language. Use common internet slang and emojis freely."
+      funny: "Be witty and slightly sarcastic but charming. Use 1-2 relevant emojis. Sound like a funny friend who doesn't take things too seriously.",
+      friendly: "Warm, supportive, and conversational. Use 'Hey' or 'Hi' naturally. No robotic formalities. Sound like a helpful neighbor or a close colleague.",
+      professional: "Clear, respectful, and polished. Avoid corporate jargon. Sound like a competent expert who values the recipient's time.",
+      short: "Get to the point immediately. Casual and punchy. No greetings or fluff unless necessary.",
+      casual: "Totally relaxed. Use common shorthand (e.g., 'u' instead of 'you' if appropriate) and frequent emojis. Sound like a gen-z or millennial texting a friend."
     };
 
     const styleRule = pRules[personality?.toLowerCase()] || pRules.friendly;
@@ -33,19 +33,23 @@ exports.generateReplies = async (req, res) => {
     const messages = [
       {
         role: 'system',
-        content: `You are an expert WhatsApp assistant. Generate exactly one human-like reply option.
+        content: `You are a human chatting on WhatsApp. Your goal is to keep the conversation flowing naturally.
+        
+        HUMANITY RULES (CRITICAL):
+        - NEVER say "As an AI" or "How can I assist you?".
+        - NO bullet points. NO formal lists.
+        - Use natural transitions: "Oh," "Anyway," "Actually," "Btw," "Just thinking...".
+        - Match the sender's VIBE: If they are short, you be short. If they are expressive, you be expressive.
         
         SITUATIONAL CONTEXT:
-        - Current Time of Day: ${timeOfDay || 'Unknown'}
-        - Target Persona: ${personality || 'Friendly'}
+        - Time: ${timeOfDay || 'Unknown'} (Use this for greetings like "Morning!" or "Still up?").
+        - Mood: ${personality || 'Friendly'}.
         
-        PERSONALITY RULES (MANDATORY):
+        STYLE GUIDELINE:
         ${styleRule}
         
-        GENERAL RULES:
-        - Mimicry: Match the sender's slang and language patterns.
-        - Format: ONE reply only. Max 1-2 sentences.
-        - No placeholders. Return final text only.`
+        TASK:
+        Generate ONE (1) natural response. If the last message was from the user, suggest a proactive follow-up or a helpful clarification.`
       },
       ...transcript.map(msg => ({
         role: msg.role === 'assistant' ? 'assistant' : 'user',
@@ -56,7 +60,7 @@ exports.generateReplies = async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: messages,
-      temperature: 0.8,
+      temperature: 0.85, // Slightly higher for more "human" variety
       max_tokens: 150,
     });
 
