@@ -10,4 +10,18 @@ router.post('/cancel-subscription', (req, res, next) => {
   next();
 }, adminController.cancelSubscription);
 
+router.get('/users', (req, res, next) => {
+  const secret = process.env.ADMIN_SECRET;
+  const header = req.headers['x-admin-secret'];
+  if (!secret || !header || header !== secret) return res.status(401).json({ error: 'unauthorized' });
+  next();
+}, adminController.listUsers);
+
+router.get('/user/:email', (req, res, next) => {
+  const secret = process.env.ADMIN_SECRET;
+  const header = req.headers['x-admin-secret'];
+  if (!secret || !header || header !== secret) return res.status(401).json({ error: 'unauthorized' });
+  next();
+}, adminController.getUser);
+
 module.exports = router;

@@ -1,0 +1,13 @@
+body { font-family: Arial, Helvetica, sans-serif; background:#f7faf7; color:#0f172a; margin:0; padding:24px; }
+.container { max-width:1000px; margin:0 auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 8px 30px rgba(2,6,23,0.06); }
+h1 { margin:0 0 12px 0; font-size:20px }
+.controls { display:flex; gap:8px; margin-bottom:12px }
+.controls input { flex:1; padding:8px 10px; border:1px solid #e6eef0; border-radius:6px }
+.controls button { padding:8px 12px; background:#0f7a52; color:#fff; border:none; border-radius:6px; cursor:pointer }
+.status { margin-bottom:12px; font-size:13px }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:10px; border-bottom:1px solid #eef3f2 }
+th { background:#f3fbf6 }
+button.view, button.cancel { padding:6px 8px; border-radius:6px; border:none; cursor:pointer }
+button.view { background:#0ea5a4; color:#fff; margin-right:6px }
+button.cancel { background:#ef4444; color:#fff }

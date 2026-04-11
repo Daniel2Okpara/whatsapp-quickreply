@@ -1,12 +1,13 @@
 const crypto = require('crypto');
 const querystring = require('querystring');
 const User = require('../models/user.model');
+const WebhookLog = require('../models/webhook.model');
 
-// Helper: simple HMAC verification using webhook secret header
-function verifyWebhook(req) {
+// HMAC verification using PADDLE_WEBHOOK_SECRET
+function verifyWebhookHmac(req) {
   const secret = process.env.PADDLE_WEBHOOK_SECRET;
   if (!secret) return false;
-  const sigHeader = req.headers['x-paddle-signature'] || req.headers['paddle-signature'];
+  const sigHeader = req.headers['x-paddle-signature'] || req.headers['paddle-signature'] || req.headers['p-signature'];
   if (!sigHeader) return false;
   const raw = req.rawBody || '';
   const hmac = crypto.createHmac('sha256', secret).update(raw).digest('hex');
@@ -27,9 +28,9 @@ exports.handleWebhook = async (req, res) => {
     console.warn('[Paddle] Failed to parse webhook body', e);
   }
 
-  // Verify webhook if possible
+  // Verify webhook using HMAC secret (Paddle Billing)
   if (process.env.PADDLE_WEBHOOK_SECRET) {
-    const ok = verifyWebhook(req);
+    const ok = verifyWebhookHmac(req);
     if (!ok) {
       console.warn('[Paddle] Webhook signature verification failed');
       return res.status(400).send('invalid signature');
@@ -46,6 +47,21 @@ exports.handleWebhook = async (req, res) => {
     if (!email) {
       return res.status(200).send('no-email');
     }
+
+    // Deduplicate using raw body hash
+    const rawHash = crypto.createHash('sha256').update(raw).digest('hex');
+    const existingLog = await WebhookLog.findOne({ hash: rawHash });
+    if (existingLog) {
+      existingLog.attempts = (existingLog.attempts || 1) + 1;
+      existingLog.processedAt = new Date();
+      await existingLog.save();
+      console.log('[Paddle] Duplicate webhook received, incremented attempts');
+      return res.status(200).send('duplicate');
+    }
+
+    // Create log entry
+    const log = new WebhookLog({ hash: rawHash, alertName: alertName, subscriptionId, rawBody: raw, status: 'processing' });
+    await log.save();
 
     let user = await User.findOne({ email });
     if (!user) {
@@ -78,9 +94,15 @@ exports.handleWebhook = async (req, res) => {
     }
 
     await user.save();
+    log.status = 'done';
+    log.processedAt = new Date();
+    await log.save();
     return res.status(200).send('ok');
   } catch (err) {
     console.error('[Paddle] webhook handling error', err);
+    try {
+      await WebhookLog.create({ hash: crypto.createHash('sha256').update(raw).digest('hex'), alertName, subscriptionId, rawBody: raw, status: 'failed' });
+    } catch (e) {}
     return res.status(500).send('error');
   }
 };
