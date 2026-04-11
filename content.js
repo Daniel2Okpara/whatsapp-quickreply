@@ -6,12 +6,11 @@
 (function() {
   'use strict';
 
-  // Enforce onboarding: if user is not authenticated (no `jwtToken`), show a small sign-in CTA
-  // and do not load the full UI. This ensures first-run requires sign-up/sign-in.
-  chrome.storage.local.get(['jwtToken'], (auth) => {
-    const isAuthed = !!(auth && auth.jwtToken);
-    if (!isAuthed) {
-      // minimal host + CTA
+  // Enforce onboarding: if user has not provided `email`, show onboarding modal
+  chrome.storage.local.get(['email'], (auth) => {
+    const userEmail = auth && auth.email;
+    if (!userEmail) {
+      // minimal host + onboarding CTA
       const hostEl = document.createElement('div');
       hostEl.id = 'waqr-host';
       hostEl.setAttribute('style', 'position: fixed; top: 12px; right: 12px; z-index: 999999; pointer-events: auto;');
@@ -22,21 +21,44 @@
       styleEl.textContent = `
         .waqr-cta { background:#27a55e;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;border:none;box-shadow:0 6px 16px rgba(0,0,0,0.18); }
         .waqr-cta small { display:block; font-weight:400; font-size:11px; opacity:0.95; margin-top:6px; color:#eaf6ee }
+        .waqr-input { padding:8px 10px; border-radius:6px; border:1px solid #e6eef0; width:220px; margin-right:8px }
       `;
       shadow.appendChild(styleEl);
 
+      const container = document.createElement('div');
+      container.style.display = 'flex'; container.style.alignItems = 'center';
+
+      const input = document.createElement('input');
+      input.className = 'waqr-input';
+      input.placeholder = 'you@example.com';
+      input.type = 'email';
+
       const btn = document.createElement('button');
       btn.className = 'waqr-cta';
-      btn.innerHTML = 'Sign in to WA QuickReply<br><small>Click to create an account and enable the extension</small>';
-      btn.addEventListener('click', () => {
-        try { window.open('https://wa-quickreply-landing.vercel.app/?from=ext', '_blank'); } catch (e) { console.warn('Open landing failed', e); }
+      btn.innerHTML = 'Activate';
+      btn.addEventListener('click', async () => {
+        const val = (input.value || '').trim().toLowerCase();
+        const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+        if (!ok) { alert('Please enter a valid email address'); return; }
+        chrome.storage.local.set({ email: val }, () => {
+          try { alert('Thanks — email saved. You can now upgrade using the same email.'); } catch (e) {}
+          location.reload();
+        });
       });
-      shadow.appendChild(btn);
 
-      // Also show a subtle locked FAB near compose area if possible (best-effort)
-      return; // stop loading full UI
+      const note = document.createElement('div');
+      note.style.fontSize = '12px'; note.style.color = '#fff'; note.style.marginLeft = '8px';
+      note.textContent = 'We only use your email to sync your plan and unlock Pro.';
+
+      container.appendChild(input);
+      container.appendChild(btn);
+      container.appendChild(note);
+
+      shadow.appendChild(container);
+      return; // stop loading full UI until email provided
     }
-    // If authenticated, continue loading the main content script below
+
+    // If we have an email, continue loading the main content script below
     (function mainContent() {
 
   // Prevent double injection
@@ -453,6 +475,19 @@
     const status = (sub.subscriptionStatus || '').toLowerCase();
     const isPro = tier === 'pro' || plan === 'pro' || (status === 'active' && (plan === 'pro' || tier === 'pro'));
     if (isPro) applyProUI();
+  });
+
+  // React to subscription changes to instantly apply Pro UI
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (changes.subscription) {
+      const sub = changes.subscription.newValue || {};
+      const tier = (sub.tier || '').toLowerCase();
+      const plan = (sub.plan || '').toLowerCase();
+      const status = (sub.subscriptionStatus || '').toLowerCase();
+      const isPro = tier === 'pro' || plan === 'pro' || (status === 'active' && (plan === 'pro' || tier === 'pro'));
+      if (isPro) applyProUI();
+    }
   });
 
   // Toast notifications

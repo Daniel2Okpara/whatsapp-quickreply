@@ -281,3 +281,7 @@ chrome.runtime.onStartup.addListener(() => {
 
 // run once at worker start
 refreshSubscription();
+// Poll user-status every 15 seconds to detect upgrades
+setInterval(() => {
+  refreshSubscription();
+}, 15000);
