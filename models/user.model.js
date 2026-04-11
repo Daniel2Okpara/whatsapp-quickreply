@@ -17,6 +17,20 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  plan: {
+    type: String,
+    enum: ['free', 'pro'],
+    default: 'free'
+  },
+  subscriptionId: {
+    type: String,
+    default: null
+  },
+  subscriptionStatus: {
+    type: String,
+    enum: ['active', 'cancelled', 'inactive'],
+    default: 'inactive'
+  },
   creditsUsed: {
     type: Number,
     default: 0
