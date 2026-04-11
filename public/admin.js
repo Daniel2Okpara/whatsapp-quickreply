@@ -72,9 +72,63 @@ document.getElementById('load-users').addEventListener('click', async () => {
   try {
     renderStatus('Loading users...', false);
     const data = await apiFetch('/admin/users');
-    renderUsers(data.users || []);
+    window.__ADMIN_USERS = data.users || [];
+    renderUsers(window.__ADMIN_USERS.slice(0, 20));
     renderStatus('Loaded ' + (data.users?.length || 0) + ' users', false);
   } catch (err) {
     renderStatus(err.message || 'Failed to load users', true);
   }
 });
+
+// Search handling
+document.getElementById('search').addEventListener('input', (e) => {
+  const q = (e.target.value || '').toLowerCase().trim();
+  const all = window.__ADMIN_USERS || [];
+  const filtered = all.filter(u => (u.email || '').toLowerCase().includes(q) || (u.plan || '').toLowerCase().includes(q) || (u.subscriptionStatus || '').toLowerCase().includes(q));
+  window.__ADMIN_FILTERED = filtered;
+  renderPage(1);
+});
+
+// Pagination + render helpers
+function renderPage(page = 1, perPage = 20) {
+  const list = (window.__ADMIN_FILTERED || window.__ADMIN_USERS || []);
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const start = (page - 1) * perPage;
+  const slice = list.slice(start, start + perPage);
+  renderUsers(slice);
+  renderPagination(page, pages);
+}
+
+function renderPagination(active, pages) {
+  const el = document.getElementById('pagination');
+  if (pages <= 1) { el.innerHTML = ''; return; }
+  let html = '';
+  for (let i = 1; i <= pages; i++) {
+    html += `<button class='page-btn' data-page='${i}' ${i===active?"style='font-weight:700'":""}>${i}</button>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll('button.page-btn').forEach(b => b.addEventListener('click', (ev) => {
+    const p = parseInt(ev.currentTarget.dataset.page, 10);
+    renderPage(p);
+  }));
+}
+
+// Export CSV
+document.getElementById('export-csv').addEventListener('click', () => {
+  const list = (window.__ADMIN_FILTERED || window.__ADMIN_USERS || []);
+  if (!list || list.length === 0) return alert('No users to export');
+  const rows = [ ['email','plan','subscriptionStatus','subscriptionId','createdAt'] ];
+  list.forEach(u => rows.push([u.email||'', u.plan||'', u.subscriptionStatus||'', u.subscriptionId||'', u.createdAt||'']));
+  const csv = rows.map(r => r.map(c => '"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'waqr-users.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+

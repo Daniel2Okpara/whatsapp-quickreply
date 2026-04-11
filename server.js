@@ -44,11 +44,7 @@ app.use('/', userRoutes);
 const adminRoutes = require('./routes/admin.routes');
 app.use('/admin', adminRoutes);
 
-// Serve admin static assets and dashboard
-app.use('/admin-static', express.static(path.join(__dirname, 'public')));
-app.get('/admin-dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
+// Admin dashboard moved to standalone frontend app; do not serve admin UI here.
 
 // Database connection
 const connectDB = async () => {

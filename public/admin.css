@@ -4,6 +4,10 @@ h1 { margin:0 0 12px 0; font-size:20px }
 .controls { display:flex; gap:8px; margin-bottom:12px }
 .controls input { flex:1; padding:8px 10px; border:1px solid #e6eef0; border-radius:6px }
 .controls button { padding:8px 12px; background:#0f7a52; color:#fff; border:none; border-radius:6px; cursor:pointer }
+.controls #search { width:220px; }
+.controls #export-csv { background:#2563eb }
+.pagination { margin-top:12px; display:flex; gap:6px }
+.pagination button { padding:6px 8px; border-radius:6px; border:none; cursor:pointer; background:#e6eef0 }
 .status { margin-bottom:12px; font-size:13px }
 table { width:100%; border-collapse:collapse; }
 th, td { text-align:left; padding:10px; border-bottom:1px solid #eef3f2 }
