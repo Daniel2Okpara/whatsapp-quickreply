@@ -24,4 +24,11 @@ router.get('/user/:email', (req, res, next) => {
   next();
 }, adminController.getUser);
 
+router.post('/simulate-webhook', (req, res, next) => {
+  const secret = process.env.ADMIN_SECRET;
+  const header = req.headers['x-admin-secret'];
+  if (!secret || !header || header !== secret) return res.status(401).json({ error: 'unauthorized' });
+  next();
+}, adminController.simulateWebhook);
+
 module.exports = router;

@@ -1,4 +1,6 @@
 const User = require('../models/user.model');
+const paddleController = require('./paddle.controller');
+const querystring = require('querystring');
 
 exports.cancelSubscription = async (req, res) => {
   try {
@@ -41,6 +43,24 @@ exports.getUser = async (req, res) => {
     return res.json({ user });
   } catch (err) {
     console.error('[Admin] getUser error', err);
+    return res.status(500).json({ error: 'server_error' });
+  }
+};
+
+exports.simulateWebhook = async (req, res) => {
+  try {
+    // Protected admin route should ensure only admins call this
+    const { alert_name, email, subscription_id, extra } = req.body || {};
+    if (!alert_name || !email) return res.status(400).json({ error: 'alert_name_and_email_required' });
+
+    // Build a payload similar to Paddle form post
+    const body = Object.assign({}, extra || {}, { alert_name, email, subscription_id });
+    const raw = querystring.stringify(body);
+
+    const result = await paddleController.processPaddlePayload(body, raw);
+    return res.json({ success: true, result });
+  } catch (err) {
+    console.error('[Admin] simulateWebhook error', err);
     return res.status(500).json({ error: 'server_error' });
   }
 };

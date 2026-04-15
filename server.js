@@ -44,6 +44,27 @@ app.use('/', userRoutes);
 const adminRoutes = require('./routes/admin.routes');
 app.use('/admin', adminRoutes);
 
+// Server-Sent Events endpoint for subscription updates
+const eventsService = require('./services/events.service');
+app.get('/events', (req, res) => {
+  const email = (req.query.email || '').toLowerCase();
+  if (!email) return res.status(400).send('email_required');
+
+  // Set headers for SSE
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write('\n');
+
+  eventsService.addClient(email, res);
+
+  req.on('close', () => {
+    eventsService.removeClient(email, res);
+  });
+});
+
 // Admin dashboard moved to standalone frontend app; do not serve admin UI here.
 
 // Database connection

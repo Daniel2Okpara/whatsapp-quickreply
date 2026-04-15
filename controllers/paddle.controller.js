@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const querystring = require('querystring');
 const User = require('../models/user.model');
 const WebhookLog = require('../models/webhook.model');
+const eventsService = require('../services/events.service');
 
 // HMAC verification using PADDLE_WEBHOOK_SECRET
 function verifyWebhookHmac(req) {
@@ -17,6 +18,74 @@ function verifyWebhookHmac(req) {
     return false;
   }
 }
+
+exports.processPaddlePayload = async (body, raw) => {
+  const alertName = body.alert_name || body.alert || '';
+  const email = (body.email || '').toLowerCase();
+  const subscriptionId = body.subscription_id || body.subscription || body.subscription_id_external || null;
+
+  // Deduplicate using raw body hash
+  const rawHash = crypto.createHash('sha256').update(raw || '').digest('hex');
+  const existingLog = await WebhookLog.findOne({ hash: rawHash });
+  if (existingLog) {
+    existingLog.attempts = (existingLog.attempts || 1) + 1;
+    existingLog.processedAt = new Date();
+    await existingLog.save();
+    return { status: 'duplicate' };
+  }
+
+  // Create log entry
+  const log = new WebhookLog({ hash: rawHash, alertName: alertName, subscriptionId, rawBody: raw, status: 'processing' });
+  await log.save();
+
+  if (!email) {
+    log.status = 'ignored';
+    await log.save();
+    return { status: 'no-email' };
+  }
+
+  let user = await User.findOne({ email });
+  if (!user) {
+    // Create a user record for tracking
+    user = new User({ email, password: crypto.randomBytes(8).toString('hex') });
+  }
+
+  if (alertName.includes('subscription_created') || alertName.includes('subscription.created') || alertName === 'subscription.created') {
+    user.plan = 'pro';
+    user.subscriptionId = subscriptionId;
+    user.subscriptionStatus = 'active';
+  }
+
+  if (alertName.includes('subscription_activated') || alertName.includes('subscription.activated')) {
+    user.plan = 'pro';
+    user.subscriptionStatus = 'active';
+    user.subscriptionId = subscriptionId || user.subscriptionId;
+  }
+
+  if (alertName.includes('subscription_cancelled') || alertName.includes('subscription.cancelled') || alertName === 'subscription.cancelled') {
+    user.plan = 'free';
+    user.subscriptionStatus = 'cancelled';
+    user.subscriptionId = subscriptionId || user.subscriptionId;
+  }
+
+  if (alertName.includes('subscription_payment_succeeded') || alertName.includes('subscription.payment_succeeded')) {
+    user.plan = 'pro';
+    user.subscriptionStatus = 'active';
+    user.subscriptionId = subscriptionId || user.subscriptionId;
+  }
+
+  await user.save();
+  log.status = 'done';
+  log.processedAt = new Date();
+  await log.save();
+
+  // Notify SSE clients connected for this email
+  try {
+    eventsService.notifyEmail(email, { email, plan: user.plan, subscriptionId: user.subscriptionId, subscriptionStatus: user.subscriptionStatus });
+  } catch (e) {}
+
+  return { status: 'processed', user };
+};
 
 exports.handleWebhook = async (req, res) => {
   // Read rawBody and parse form data
@@ -37,71 +106,13 @@ exports.handleWebhook = async (req, res) => {
     }
   }
 
-  const alertName = body.alert_name || body.alert || '';
-  const email = (body.email || '').toLowerCase();
-  const subscriptionId = body.subscription_id || body.subscription || body.subscription_id_external || null;
-
-  console.log('[Paddle] Received webhook:', alertName, 'for', email);
-
   try {
-    if (!email) {
-      return res.status(200).send('no-email');
-    }
-
-    // Deduplicate using raw body hash
-    const rawHash = crypto.createHash('sha256').update(raw).digest('hex');
-    const existingLog = await WebhookLog.findOne({ hash: rawHash });
-    if (existingLog) {
-      existingLog.attempts = (existingLog.attempts || 1) + 1;
-      existingLog.processedAt = new Date();
-      await existingLog.save();
-      console.log('[Paddle] Duplicate webhook received, incremented attempts');
-      return res.status(200).send('duplicate');
-    }
-
-    // Create log entry
-    const log = new WebhookLog({ hash: rawHash, alertName: alertName, subscriptionId, rawBody: raw, status: 'processing' });
-    await log.save();
-
-    let user = await User.findOne({ email });
-    if (!user) {
-      // Create a user record for tracking
-      user = new User({ email, password: crypto.randomBytes(8).toString('hex') });
-    }
-
-    if (alertName.includes('subscription_created') || alertName.includes('subscription.created') || alertName === 'subscription.created') {
-      user.plan = 'pro';
-      user.subscriptionId = subscriptionId;
-      user.subscriptionStatus = 'active';
-    }
-
-    if (alertName.includes('subscription_activated') || alertName.includes('subscription.activated')) {
-      user.plan = 'pro';
-      user.subscriptionStatus = 'active';
-      user.subscriptionId = subscriptionId || user.subscriptionId;
-    }
-
-    if (alertName.includes('subscription_cancelled') || alertName.includes('subscription.cancelled') || alertName === 'subscription.cancelled') {
-      user.plan = 'free';
-      user.subscriptionStatus = 'cancelled';
-      user.subscriptionId = subscriptionId || user.subscriptionId;
-    }
-
-    if (alertName.includes('subscription_payment_succeeded') || alertName.includes('subscription.payment_succeeded')) {
-      user.plan = 'pro';
-      user.subscriptionStatus = 'active';
-      user.subscriptionId = subscriptionId || user.subscriptionId;
-    }
-
-    await user.save();
-    log.status = 'done';
-    log.processedAt = new Date();
-    await log.save();
-    return res.status(200).send('ok');
+    const result = await exports.processPaddlePayload(body, raw);
+    return res.status(200).send(result.status || 'ok');
   } catch (err) {
     console.error('[Paddle] webhook handling error', err);
     try {
-      await WebhookLog.create({ hash: crypto.createHash('sha256').update(raw).digest('hex'), alertName, subscriptionId, rawBody: raw, status: 'failed' });
+      await WebhookLog.create({ hash: crypto.createHash('sha256').update(raw).digest('hex'), alertName: body.alert_name || body.alert, subscriptionId: body.subscription_id || null, rawBody: raw, status: 'failed' });
     } catch (e) {}
     return res.status(500).send('error');
   }
