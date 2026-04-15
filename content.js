@@ -88,6 +88,37 @@
 
   const shadow = hostEl.attachShadow({ mode: 'open' });
 
+  // SSE: connect to backend for real-time subscription updates
+  (function setupSSE() {
+    const BACKEND_URL = 'http://localhost:3000';
+    chrome.storage.local.get(['email'], (r) => {
+      const email = r && r.email;
+      if (!email) return;
+      try {
+        const url = `${BACKEND_URL}/events?email=${encodeURIComponent(email)}`;
+        const es = new EventSource(url);
+        es.addEventListener('subscription_update', (ev) => {
+          try {
+            const data = JSON.parse(ev.data || '{}');
+            chrome.storage.local.set({ subscription: data }, () => {
+              applyProUI(); // re-apply Pro UI immediately
+            });
+          } catch (e) {
+            console.warn('SSE parse error', e);
+          }
+        });
+        es.onerror = (err) => {
+          console.warn('SSE error', err);
+          es.close();
+          setTimeout(() => setupSSE(), 5000); // reconnect
+        };
+        window.addEventListener('unload', () => es.close());
+      } catch (e) {
+        console.warn('SSE connect failed', e);
+      }
+    });
+  })();
+
   // Inject styles
   const styleEl = document.createElement('style');
   styleEl.textContent = `
@@ -408,6 +439,7 @@
         <span id="waqr-pro-badge" style="display:none; background:rgba(255,255,255,0.2); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; letter-spacing:0.5px;">PRO</span>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
+        <button id='waqr-settings' style='background: none; border: none; color: white; font-size: 16px; cursor: pointer; display:flex; align-items:center;'>⚙️</button>
         <a href="https://wa-quickreply-landing.vercel.app/#pricing" target="_blank" id="waqr-upgrade-link" style="color:white; font-size:11px; text-decoration:underline; font-weight:500;">Upgrade to Pro</a>
         <button id='waqr-close' style='background: none; border: none; color: white; font-size: 20px; cursor: pointer; display:flex; align-items:center;'>×</button>
       </div>
@@ -453,6 +485,59 @@
     </div>
   `;
   shadow.appendChild(panel);
+
+  // Inline Settings Panel
+  const settingsPanel = document.createElement('div');
+  settingsPanel.id = 'waqr-settings-panel';
+  settingsPanel.style.display = 'none';
+  settingsPanel.style.position = 'absolute';
+  settingsPanel.style.top = '60px';
+  settingsPanel.style.right = '10px';
+  settingsPanel.style.background = 'white';
+  settingsPanel.style.border = '1px solid #ddd';
+  settingsPanel.style.borderRadius = '8px';
+  settingsPanel.style.padding = '16px';
+  settingsPanel.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+  settingsPanel.style.zIndex = '1000000';
+  settingsPanel.style.width = '250px';
+  settingsPanel.innerHTML = `
+    <div style="font-weight:600; margin-bottom:12px;">Settings</div>
+    <label style="display:block; font-size:13px; margin-bottom:4px;">Email:</label>
+    <input type="email" id="waqr-settings-email" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; margin-bottom:12px; box-sizing:border-box;">
+    <button id="waqr-settings-save" style="background:#27a55e; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; width:100%;">Save</button>
+  `;
+  shadow.appendChild(settingsPanel);
+
+  // Wire settings button
+  const settingsBtn = shadow.querySelector('#waqr-settings');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+      const isVisible = settingsPanel.style.display !== 'none';
+      settingsPanel.style.display = isVisible ? 'none' : 'block';
+    });
+  }
+
+  // Prefill email in settings
+  chrome.storage.local.get(['email'], (r) => {
+    const email = r && r.email;
+    const input = shadow.querySelector('#waqr-settings-email');
+    if (input && email) input.value = email;
+  });
+
+  // Save email from settings
+  const saveBtn = shadow.querySelector('#waqr-settings-save');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      const input = shadow.querySelector('#waqr-settings-email');
+      const val = (input.value || '').trim().toLowerCase();
+      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+      if (!ok) { alert('Please enter a valid email address'); return; }
+      chrome.storage.local.set({ email: val }, () => {
+        settingsPanel.style.display = 'none';
+        location.reload(); // reload to reconnect SSE with new email
+      });
+    });
+  }
 
   // Show stored email and wire Change Email action; prefill upgrade link with email
   (function setEmailDisplayAndUpgrade() {

@@ -1,6 +1,6 @@
 // WA QuickReply Background Script
 
-const BACKEND_URL = 'https://wa-quickreply-server.onrender.com';
+const BACKEND_URL = 'http://localhost:3000';
 const FREE_AI_LIMIT = 5;
 const PRO_TIER_COST = 500; // .00 in cents
 
@@ -27,15 +27,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 
   // After install, if user is not authenticated, open landing to prompt sign-up/sign-in
-  chrome.storage.local.get(['jwtToken'], (res) => {
-    if (!res || !res.jwtToken) {
-      try {
-        chrome.tabs.create({ url: 'https://wa-quickreply-landing.vercel.app/?source=extension_install' });
-      } catch (e) {
-        console.warn('[WAQR] Failed to open landing page on install', e?.message || e);
-      }
-    }
-  });
+  // Do NOT redirect users to landing on install. Keep onboarding in-extension.
 });
 
 // Listen for messages from content script
@@ -238,9 +230,9 @@ chrome.action.onClicked.addListener((tab) => {
 // Refresh subscription status on startup (if user has a token)
 async function refreshSubscription() {
   try {
-    const data = await chrome.storage.local.get(['jwtToken','userEmail']);
-    const token = data.jwtToken;
-    const email = data.userEmail;
+      const data = await chrome.storage.local.get(['jwtToken','email']);
+      const token = data.jwtToken;
+      const email = data.email;
 
     if (token) {
       const resp = await fetch(`${BACKEND_URL}/auth/status`, {
