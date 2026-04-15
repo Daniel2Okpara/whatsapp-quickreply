@@ -6,64 +6,10 @@
 (function() {
   'use strict';
 
-  // Enforce onboarding: if user has not provided `email`, show onboarding modal
-  chrome.storage.local.get(['email'], (auth) => {
-    const userEmail = auth && auth.email;
-    if (!userEmail) {
-      // minimal host + onboarding CTA
-      const hostEl = document.createElement('div');
-      hostEl.id = 'waqr-host';
-      hostEl.setAttribute('style', 'position: fixed; top: 12px; right: 12px; z-index: 999999; pointer-events: auto;');
-      document.documentElement.appendChild(hostEl);
-
-      const shadow = hostEl.attachShadow({ mode: 'open' });
-      const styleEl = document.createElement('style');
-      styleEl.textContent = `
-        .waqr-cta { background:#27a55e;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;border:none;box-shadow:0 6px 16px rgba(0,0,0,0.18); }
-        .waqr-cta small { display:block; font-weight:400; font-size:11px; opacity:0.95; margin-top:6px; color:#eaf6ee }
-        .waqr-input { padding:8px 10px; border-radius:6px; border:1px solid #e6eef0; width:220px; margin-right:8px }
-      `;
-      shadow.appendChild(styleEl);
-
-      const container = document.createElement('div');
-      container.style.display = 'flex'; container.style.alignItems = 'center';
-
-      const input = document.createElement('input');
-      input.className = 'waqr-input';
-      input.placeholder = 'you@example.com';
-      input.type = 'email';
-
-      const btn = document.createElement('button');
-      btn.className = 'waqr-cta';
-      btn.innerHTML = 'Activate';
-      btn.addEventListener('click', async () => {
-        const val = (input.value || '').trim().toLowerCase();
-        const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
-        if (!ok) { alert('Please enter a valid email address'); return; }
-        chrome.storage.local.set({ email: val }, () => {
-          try { alert('Thanks — email saved. You can now upgrade using the same email.'); } catch (e) {}
-          location.reload();
-        });
-      });
-
-      const note = document.createElement('div');
-      note.style.fontSize = '12px'; note.style.color = '#fff'; note.style.marginLeft = '8px';
-      note.textContent = 'We only use your email to sync your plan and unlock Pro.';
-
-      container.appendChild(input);
-      container.appendChild(btn);
-      container.appendChild(note);
-
-      shadow.appendChild(container);
-      return; // stop loading full UI until email provided
-    }
-
-    // If we have an email, continue loading the main content script below
-    (function mainContent() {
-
-  // Prevent double injection
-  if (window.WAQR_LOADED) return;
-  window.WAQR_LOADED = true;
+  function initializeExtension() {
+    // Prevent double injection
+    if (window.WAQR_LOADED) return;
+    window.WAQR_LOADED = true;
 
   // ============================================================================
   // 0. STABILITY & CONTEXT CHECK
@@ -1652,6 +1598,144 @@
   }, 1000);
 
   console.log('WA QuickReply loaded successfully');
-    })();
-  } // end chrome.storage callback
-); // end chrome.storage.get
+  }
+
+  // Check for email and load extension or show onboarding
+  chrome.storage.local.get(['email'], (res) => {
+    const email = res && res.email;
+    if (!email) {
+      // Show beautiful onboarding modal at right-bottom corner
+      const hostEl = document.createElement('div');
+      hostEl.id = 'waqr-onboarding-host';
+      hostEl.setAttribute('style', 'position: fixed; bottom: 24px; right: 24px; z-index: 999999; pointer-events: auto;');
+      document.documentElement.appendChild(hostEl);
+
+      const shadow = hostEl.attachShadow({ mode: 'open' });
+      const styleEl = document.createElement('style');
+      styleEl.textContent = `
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        
+        .onboarding-modal {
+          background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+          padding: 32px;
+          max-width: 380px;
+          width: 100%;
+          animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        @keyframes slideUp {
+          from { transform: translateY(40px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .onboarding-header {
+          display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+        }
+        
+        .onboarding-logo {
+          width: 48px; height: 48px; border-radius: 12px;
+          background: linear-gradient(135deg, #27a55e 0%, #0f7a52 100%);
+          display: flex; align-items: center; justify-content: center;
+          font-weight: bold; color: white; font-size: 24px;
+        }
+        
+        .onboarding-title {
+          font-size: 18px; font-weight: 700; color: #0f172a;
+        }
+        
+        .onboarding-subtitle {
+          font-size: 14px; color: #64748b; margin-bottom: 24px; line-height: 1.5;
+        }
+        
+        .onboarding-input-group { margin-bottom: 20px; }
+        
+        .onboarding-input {
+          width: 100%; padding: 12px 16px; font-size: 14px;
+          border: 1.5px solid #e2e8f0; border-radius: 10px;
+          background: white; color: #1e293b;
+          transition: all 0.2s;
+        }
+        
+        .onboarding-input:focus {
+          outline: none; border-color: #27a55e; box-shadow: 0 0 0 3px rgba(39, 165, 94, 0.1);
+        }
+        
+        .onboarding-input::placeholder { color: #94a3b8; }
+        
+        .onboarding-btn {
+          width: 100%; padding: 12px 16px; font-size: 15px; font-weight: 600;
+          background: linear-gradient(135deg, #27a55e 0%, #0f7a52 100%);
+          color: white; border: none; border-radius: 10px;
+          cursor: pointer; transition: all 0.3s;
+          box-shadow: 0 4px 12px rgba(39, 165, 94, 0.2);
+        }
+        
+        .onboarding-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(39, 165, 94, 0.3); }
+        .onboarding-btn:active { transform: translateY(0); }
+        
+        .onboarding-error {
+          color: #dc2626; font-size: 13px; margin-top: 8px; display: none;
+        }
+      `;
+      shadow.appendChild(styleEl);
+
+      const modal = document.createElement('div');
+      modal.className = 'onboarding-modal';
+      modal.innerHTML = `
+        <div class="onboarding-header">
+          <div class="onboarding-logo">✓</div>
+          <div>
+            <div class="onboarding-title">WA QuickReply</div>
+            <div style="font-size: 12px; color: #94a3b8;">Activate to get started</div>
+          </div>
+        </div>
+        
+        <div class="onboarding-subtitle">
+          Enter your email to unlock templates, AI replies, and Pro features.
+        </div>
+        
+        <div class="onboarding-input-group">
+          <input type="email" class="onboarding-input" id="onboard-email" placeholder="you@example.com" autocomplete="email">
+          <div class="onboarding-error" id="onboard-error"></div>
+        </div>
+        
+        <button class="onboarding-btn" id="onboard-activate">Activate Extension</button>
+      `;
+      shadow.appendChild(modal);
+
+      const input = shadow.querySelector('#onboard-email');
+      const btn = shadow.querySelector('#onboard-activate');
+      const error = shadow.querySelector('#onboard-error');
+
+      btn.addEventListener('click', () => {
+        const val = (input.value || '').trim().toLowerCase();
+        const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+        if (!ok) {
+          error.textContent = 'Please enter a valid email';
+          error.style.display = 'block';
+          input.focus();
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Activating...';
+        chrome.storage.local.set({ email: val }, () => {
+          initializeExtension();
+          setTimeout(() => hostEl.remove(), 300);
+        });
+      });
+
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') btn.click();
+        if (error.style.display === 'block') error.style.display = 'none';
+      });
+
+      setTimeout(() => input.focus(), 100);
+    } else {
+      // Email exists, load the full extension
+      initializeExtension();
+    }
+  });
+})();
