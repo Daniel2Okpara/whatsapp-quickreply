@@ -15,5 +15,9 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: PADDLE_WEBHOOK_SECRET
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
       - key: NODE_ENV
         value: "production"
