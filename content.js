@@ -451,6 +451,14 @@
     <label style="display:block; font-size:13px; margin-bottom:4px;">Email:</label>
     <input type="email" id="waqr-settings-email" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; margin-bottom:12px; box-sizing:border-box;">
     <button id="waqr-settings-save" style="background:#27a55e; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; width:100%;">Save</button>
+    <div style="margin-top:12px; font-size:13px; color:#444;">Change email</div>
+    <a href="#" id="waqr-change-email-toggle" style="display:block; margin-top:8px; color:#256a45; text-decoration:underline; cursor:pointer;">Change email address</a>
+    <div id="waqr-change-email-box" style="display:none; margin-top:8px;">
+      <input type="email" id="waqr-change-current" placeholder="Current email" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; margin-bottom:8px; box-sizing:border-box;">
+      <input type="email" id="waqr-change-new" placeholder="New email" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; margin-bottom:8px; box-sizing:border-box;">
+      <button id="waqr-change-email-save" style="background:#256a45; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; width:100%;">Change</button>
+      <div id="waqr-change-email-error" style="color:#dc2626; font-size:12px; margin-top:8px; display:none;"></div>
+    </div>
   `;
   shadow.appendChild(settingsPanel);
 
@@ -485,7 +493,56 @@
     });
   }
 
-  // Show stored email and wire Change Email action; prefill upgrade link with email
+  // Change email inline flow
+  const changeToggle = shadow.querySelector('#waqr-change-email-toggle');
+  const changeBox = shadow.querySelector('#waqr-change-email-box');
+  if (changeToggle && changeBox) {
+    changeToggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      changeBox.style.display = changeBox.style.display === 'none' ? 'block' : 'none';
+    });
+
+    const changeSave = shadow.querySelector('#waqr-change-email-save');
+    const changeErr = shadow.querySelector('#waqr-change-email-error');
+    changeSave.addEventListener('click', async () => {
+      const cur = (shadow.querySelector('#waqr-change-current').value || '').trim().toLowerCase();
+      const nw = (shadow.querySelector('#waqr-change-new').value || '').trim().toLowerCase();
+      changeErr.style.display = 'none';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cur) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nw)) {
+        changeErr.textContent = 'Please enter valid emails'; changeErr.style.display = 'block'; return;
+      }
+      if (cur === nw) { changeErr.textContent = 'New email must be different'; changeErr.style.display = 'block'; return; }
+
+      // Call backend to update email
+      try {
+        const resp = await fetch('https://wa-quickreply-server.onrender.com/user/update-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentEmail: cur, newEmail: nw })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          changeErr.textContent = data.error || data.message || `Failed (${resp.status})`;
+          changeErr.style.display = 'block';
+          return;
+        }
+
+        // Success: update storage and UI
+        chrome.storage.local.set({ email: nw }, () => {
+          shadow.querySelector('#waqr-settings-email').value = nw;
+          changeBox.style.display = 'none';
+          settingsPanel.style.display = 'none';
+          showToast('Email updated');
+          // Update upgrade link param
+          const upgradeLink = shadow.querySelector('#waqr-upgrade-link');
+          if (upgradeLink) upgradeLink.href = 'https://wa-quickreply-landing.vercel.app/#pricing?email=' + encodeURIComponent(nw);
+        });
+      } catch (err) {
+        changeErr.textContent = 'Server error'; changeErr.style.display = 'block';
+      }
+    });
+  }
+
+  // Prefill upgrade link with stored email. Email management moved into settings.
   (function setEmailDisplayAndUpgrade() {
     chrome.storage.local.get(['email'], (r) => {
       const email = (r && r.email) ? r.email : null;
@@ -494,31 +551,6 @@
         const base = 'https://wa-quickreply-landing.vercel.app/#pricing';
         upgradeLink.href = email ? (base + '?email=' + encodeURIComponent(email)) : base;
       }
-
-      // create small email display with change action
-      const headerRight = shadow.querySelector('#waqr-header > div:nth-child(2)');
-      if (!headerRight) return;
-      const emailSpan = document.createElement('span');
-      emailSpan.id = 'waqr-email-display';
-      emailSpan.style.marginLeft = '8px';
-      emailSpan.style.fontSize = '12px';
-      emailSpan.style.color = 'rgba(255,255,255,0.95)';
-      if (email) {
-        emailSpan.textContent = email + ' • ';
-        const change = document.createElement('a');
-        change.href = '#';
-        change.style.color = 'white';
-        change.style.textDecoration = 'underline';
-        change.textContent = 'Change';
-        change.addEventListener('click', (e) => {
-          e.preventDefault();
-          try { chrome.runtime.openOptionsPage(); } catch (err) { window.open('chrome-extension://' + chrome.runtime.id + '/options.html'); }
-        });
-        emailSpan.appendChild(change);
-      } else {
-        emailSpan.style.display = 'none';
-      }
-      headerRight.insertBefore(emailSpan, headerRight.firstChild);
     });
   })();
 
