@@ -454,6 +454,43 @@
   `;
   shadow.appendChild(panel);
 
+  // Show stored email and wire Change Email action; prefill upgrade link with email
+  (function setEmailDisplayAndUpgrade() {
+    chrome.storage.local.get(['email'], (r) => {
+      const email = (r && r.email) ? r.email : null;
+      const upgradeLink = shadow.querySelector('#waqr-upgrade-link');
+      if (upgradeLink) {
+        const base = 'https://wa-quickreply-landing.vercel.app/#pricing';
+        upgradeLink.href = email ? (base + '?email=' + encodeURIComponent(email)) : base;
+      }
+
+      // create small email display with change action
+      const headerRight = shadow.querySelector('#waqr-header > div:nth-child(2)');
+      if (!headerRight) return;
+      const emailSpan = document.createElement('span');
+      emailSpan.id = 'waqr-email-display';
+      emailSpan.style.marginLeft = '8px';
+      emailSpan.style.fontSize = '12px';
+      emailSpan.style.color = 'rgba(255,255,255,0.95)';
+      if (email) {
+        emailSpan.textContent = email + ' • ';
+        const change = document.createElement('a');
+        change.href = '#';
+        change.style.color = 'white';
+        change.style.textDecoration = 'underline';
+        change.textContent = 'Change';
+        change.addEventListener('click', (e) => {
+          e.preventDefault();
+          try { chrome.runtime.openOptionsPage(); } catch (err) { window.open('chrome-extension://' + chrome.runtime.id + '/options.html'); }
+        });
+        emailSpan.appendChild(change);
+      } else {
+        emailSpan.style.display = 'none';
+      }
+      headerRight.insertBefore(emailSpan, headerRight.firstChild);
+    });
+  })();
+
   // Apply plan-based UI (Pro vs Free). Reads subscription from chrome.storage and updates visuals.
   function applyProUI() {
     try {

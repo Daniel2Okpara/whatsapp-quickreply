@@ -12,7 +12,12 @@
 </head>
 <body>
   <h2>Connect Extension</h2>
-  <p>Paste the connect code you received from the landing page and click Connect.</p>
+  <p>Enter your email to activate the extension or paste a connect code.</p>
+  <label>Email</label>
+  <input id="email" placeholder="you@example.com" type="email" />
+  <button id="save-email">Save Email</button>
+  <hr />
+  <label>Or paste connect code (optional)</label>
   <input id="token" placeholder="Enter connect code" />
   <button id="connect">Connect</button>
   <div id="status" style="margin-top:12px"></div>
