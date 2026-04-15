@@ -1,6 +1,6 @@
 // WA QuickReply Background Script
 
-const BACKEND_URL = 'http://localhost:3000';
+const BACKEND_URL = 'https://wa-quickreply-server.onrender.com';
 const FREE_AI_LIMIT = 5;
 const PRO_TIER_COST = 500; // .00 in cents
 
