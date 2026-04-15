@@ -1,4 +1,5 @@
 const User = require('../models/user.model');
+const WebhookLog = require('../models/webhook.model');
 const paddleController = require('./paddle.controller');
 const querystring = require('querystring');
 
@@ -61,6 +62,21 @@ exports.simulateWebhook = async (req, res) => {
     return res.json({ success: true, result });
   } catch (err) {
     console.error('[Admin] simulateWebhook error', err);
+    return res.status(500).json({ error: 'server_error' });
+  }
+};
+
+exports.listWebhookLogs = async (req, res) => {
+  try {
+    const { limit = 100, skip = 0 } = req.query;
+    const logs = await WebhookLog.find()
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10));
+    const total = await WebhookLog.countDocuments();
+    return res.json({ logs, total });
+  } catch (err) {
+    console.error('[Admin] listWebhookLogs error', err);
     return res.status(500).json({ error: 'server_error' });
   }
 };
