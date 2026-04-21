@@ -92,40 +92,72 @@ async function generateAiReply(context, personality, sendResponse) {
   try {
     const data = await storageGet(['subscription', 'apiKey', 'jwtToken']);
     const subscription = data.subscription || { tier: 'free' };
-    
-    // Check if user can use AI
-    // V12.0: UNLIMITED TESTING MODE
-    /*
-    if (subscription.tier === 'free') {
-      const canUse = await checkUsageLimit('ai');
-      if (!canUse) {
-        return sendResponse({ error: 'Daily AI limit reached (5/day). Upgrade to Pro for unlimited.', limitReached: true });
-      }
+
+    // Extract smart settings from context payload
+    const mode           = (context && context.mode)           || 'reply';
+    const replyStyle     = (context && context.replyStyle)     || 'balanced';
+    const emojiUsage     = (context && context.emojiUsage)     || 'natural';
+    const followUpEnabled = (context && context.followUpEnabled) !== false;
+
+    // Short-circuit: user disabled follow-ups entirely
+    if (mode === 'follow_up' && !followUpEnabled) {
+      return sendResponse({ noReply: true });
     }
-    */
-    
-    // Determine payload shape: accept legacy transcript array or full payload object
-    let endpoint = `${BACKEND_URL}/generate-replies`;
+
+    const replyStyleMap = {
+      short:    'Keep the reply very short and punchy — 1-2 sentences max.',
+      balanced: 'Keep the reply concise and natural — 2-4 sentences as needed.',
+      detailed: 'Be thorough and complete — explain your point clearly but not excessively.'
+    };
+    const emojiMap = {
+      none:    'Do NOT use any emojis whatsoever.',
+      minimal: 'Use at most 1 emoji, only if it fits very naturally.',
+      natural: 'Use emojis naturally as a human would in a WhatsApp chat.'
+    };
+
+    // Build mode-specific instruction that will be prepended to the conversation
+    let modeInstruction;
+    if (mode === 'follow_up') {
+      modeInstruction =
+        `MODE: FOLLOW-UP\n` +
+        `The last message in this conversation was sent by ME (assistant). I have not received a reply yet.\n` +
+        `Decide whether sending a follow-up makes sense:\n` +
+        `- If YES → Write a natural, short, non-pushy follow-up (e.g. "Just checking in 🙂", "Any update on this?", "Let me know when you can").\n` +
+        `- If NO (conversation is fully resolved, or a follow-up would feel pushy/awkward) → Reply with ONLY the exact text: NO_REPLY\n\n` +
+        `Reply Style: ${replyStyleMap[replyStyle] || replyStyleMap.balanced}\n` +
+        `Emoji: ${emojiMap[emojiUsage] || emojiMap.natural}`;
+    } else {
+      modeInstruction =
+        `MODE: REPLY\n` +
+        `Reply to the other person's last message as ME.\n` +
+        `Reply Style: ${replyStyleMap[replyStyle] || replyStyleMap.balanced}\n` +
+        `Emoji: ${emojiMap[emojiUsage] || emojiMap.natural}`;
+    }
+
+    // Build augmented messages with instruction prepended
+    let endpoint = `${BACKEND_URL}/ai-reply`;
     let body = {};
 
     if (context && typeof context === 'object' && Array.isArray(context.messages)) {
-      // New structured payload from content script
-      endpoint = `${BACKEND_URL}/ai-reply`;
+      const augmentedMessages = [
+        { role: 'user', content: modeInstruction },
+        ...context.messages
+      ];
       body = {
-        messages: context.messages,
-        styleExamples: context.styleExamples,
-        tone: context.tone,
-        timeContext: context.timeContext,
+        messages: augmentedMessages,
+        styleExamples: context.styleExamples || '',
+        tone: context.tone || 'casual',
+        timeContext: context.timeContext || 'day',
         apiKey: data.apiKey || null
       };
     } else {
+      // Legacy transcript fallback
       endpoint = `${BACKEND_URL}/generate-replies`;
       body = { transcript: context, personality, apiKey: data.apiKey || null };
     }
 
-    console.log('[WAQR] Sending AI request to', endpoint);
+    console.log('[WAQR] Sending AI request:', endpoint, '| mode:', mode);
 
-    // Use fetchWithTimeout for consistent timeout handling
     const headers = { 'Content-Type': 'application/json' };
     if (data.jwtToken) headers['Authorization'] = `Bearer ${data.jwtToken}`;
 
@@ -146,12 +178,15 @@ async function generateAiReply(context, personality, sendResponse) {
     const result = await response.json();
     console.log('[WAQR] AI result:', result);
 
-    // Update usage if free tier
-    if (subscription.tier === 'free') {
-      await incrementUsage('ai');
+    if (subscription.tier === 'free') await incrementUsage('ai');
+
+    const suggestion = (result.reply || result.replies?.[0] || result.suggestions?.[0] || result.text || '').trim();
+
+    // Handle NO_REPLY signal from AI
+    if (suggestion === 'NO_REPLY') {
+      return sendResponse({ noReply: true });
     }
-    
-    const suggestion = result.reply || result.replies?.[0] || result.suggestions?.[0] || result.text || '';
+
     sendResponse({ suggestion: suggestion || 'Could not generate a reply right now.' });
   } catch (error) {
     console.error('[WAQR] AI Error:', error);

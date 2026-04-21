@@ -386,6 +386,21 @@
       0%, 80%, 100% { transform: translateY(0); opacity: 0.6; }
       40% { transform: translateY(-6px); opacity: 1; }
     }
+
+    .waqr-set-btn {
+      padding: 6px 4px; border: 1.5px solid #e2e8f0; border-radius: 6px;
+      background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 500;
+      cursor: pointer; transition: all 0.15s; text-align: center;
+    }
+    .waqr-set-btn:hover { border-color: #27a55e; color: #27a55e; background: #f0fdf4; }
+    .waqr-set-btn.active { background: #27a55e; color: white; border-color: #1e9652; font-weight: 600; }
+
+    .waqr-toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+    .waqr-toggle input { opacity: 0; width: 0; height: 0; }
+    .waqr-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #e2e8f0; border-radius: 24px; transition: 0.3s; }
+    .waqr-slider:before { position: absolute; content: ''; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+    .waqr-toggle input:checked + .waqr-slider { background: #27a55e; }
+    .waqr-toggle input:checked + .waqr-slider:before { transform: translateX(20px); }
   `;
   shadow.appendChild(styleEl);
 
@@ -406,18 +421,15 @@
   const iconUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon128.png') : 'icons/icon128.png';
   panel.innerHTML = `
     <div id='waqr-header'>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <img src="${iconUrl}" alt="WA QuickReply" style="width:44px;height:44px;border-radius:10px;object-fit:cover;" />
-        <div style="display:flex; flex-direction:column;">
-          <span style="font-size:16px; font-weight:700;">WA QuickReply</span>
-          <span style="font-size:12px; opacity:0.9;">Activate to get started</span>
-        </div>
+      <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+        <img src="${iconUrl}" alt="WA QuickReply" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0;" />
+        <span style="font-size:15px; font-weight:700; white-space:nowrap;">WA QuickReply</span>
         <span id="waqr-pro-badge" style="display:none; background:rgba(255,255,255,0.2); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; letter-spacing:0.5px;">PRO</span>
       </div>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <button id='waqr-settings' style='background: none; border: none; color: white; font-size: 16px; cursor: pointer; display:flex; align-items:center;'>⚙️</button>
-        <a href="https://wa-quickreply-landing.vercel.app/#pricing" target="_blank" id="waqr-upgrade-link" style="color:white; font-size:11px; text-decoration:underline; font-weight:500;">Upgrade to Pro</a>
-        <button id='waqr-close' style='background: none; border: none; color: white; font-size: 20px; cursor: pointer; display:flex; align-items:center;'>×</button>
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <button id='waqr-settings' title='Settings' style='background: none; border: none; color: white; font-size: 16px; cursor: pointer; display:flex; align-items:center; padding:4px; border-radius:6px; transition: background 0.2s;' onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">⚙️</button>
+        <a href="https://wa-quickreply-landing.vercel.app/#pricing" target="_blank" id="waqr-upgrade-link" style="color:white; font-size:11px; text-decoration:underline; font-weight:500; white-space:nowrap;">Upgrade to Pro</a>
+        <button id='waqr-close' style='background: none; border: none; color: white; font-size: 20px; cursor: pointer; display:flex; align-items:center; padding:4px;'>×</button>
       </div>
     </div>
     <div id='waqr-tabs'>
@@ -445,15 +457,9 @@
         <button class='waqr-btn' id='waqr-add-template'>+ Add Template</button>
       </div>
       <div class='waqr-section' data-section='ai'>
-        <div style='font-size: 13px; color: #555; margin-bottom: 8px;'>Generate smart responses instantly</div>
-        <select class='waqr-input' id='waqr-tone'>
-          <option value='professional'>Professional</option>
-          <option value='friendly'>Friendly</option>
-          <option value='funny'>Funny</option>
-          <option value='casual'>Casual</option>
-          <option value='formal'>Formal</option>
-        </select>
-        <button class='waqr-btn' id='waqr-generate'>Generate AI Reply</button>
+        <div style='font-size: 13px; color: #555; margin-bottom: 4px;'>Generate smart responses instantly</div>
+        <div style='font-size: 11px; color: #94a3b8; margin-bottom: 12px;'>Tone &amp; style controlled in ⚙️ Settings</div>
+        <button class='waqr-btn' id='waqr-generate'>✨ Generate AI Reply</button>
         <div id='waqr-suggestions' style='margin-top: 12px;'></div>
       </div>
     </div>
@@ -462,70 +468,161 @@
   `;
   shadow.appendChild(panel);
 
-  // Inline Settings Panel
+  // ============================================================================
+  // SETTINGS PANEL — 6-control design
+  // ============================================================================
   const settingsPanel = document.createElement('div');
   settingsPanel.id = 'waqr-settings-panel';
-  settingsPanel.style.display = 'none';
-  settingsPanel.style.position = 'absolute';
-  settingsPanel.style.top = '60px';
-  settingsPanel.style.right = '10px';
-  settingsPanel.style.background = 'white';
-  settingsPanel.style.border = '1px solid #ddd';
-  settingsPanel.style.borderRadius = '8px';
-  settingsPanel.style.padding = '16px';
-  settingsPanel.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-  settingsPanel.style.zIndex = '1000000';
-  settingsPanel.style.width = '250px';
+  settingsPanel.style.cssText = `
+    display:none; position:fixed;
+    background:white; border:1px solid #e2e8f0; border-radius:12px;
+    padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.18);
+    z-index:1000001; width:264px; max-height:82vh; overflow-y:auto;
+    pointer-events:auto;
+  `;
   settingsPanel.innerHTML = `
-    <div style="font-weight:600; margin-bottom:12px;">Settings</div>
-    <label style="display:block; font-size:13px; margin-bottom:4px;">Email:</label>
-    <input type="email" id="waqr-settings-email" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; margin-bottom:12px; box-sizing:border-box;">
-    <button id="waqr-settings-save" style="background:#27a55e; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; width:100%;">Save</button>
-    <div style="margin-top:12px; font-size:13px; color:#444;">Change email</div>
-    <a href="#" id="waqr-change-email-toggle" style="display:block; margin-top:8px; color:#256a45; text-decoration:underline; cursor:pointer;">Change email address</a>
-    <div id="waqr-change-email-box" style="display:none; margin-top:8px;">
-      <input type="email" id="waqr-change-current" placeholder="Current email" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; margin-bottom:8px; box-sizing:border-box;">
-      <input type="email" id="waqr-change-new" placeholder="New email" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; margin-bottom:8px; box-sizing:border-box;">
-      <button id="waqr-change-email-save" style="background:#256a45; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; width:100%;">Change</button>
-      <div id="waqr-change-email-error" style="color:#dc2626; font-size:12px; margin-top:8px; display:none;"></div>
+    <div style="font-weight:700;font-size:14px;margin-bottom:18px;color:#0f172a;">⚙️ Settings</div>
+
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Default Tone</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:16px;" id="waqr-set-tone">
+      <button class="waqr-set-btn" data-group="tone" data-value="casual">Casual</button>
+      <button class="waqr-set-btn" data-group="tone" data-value="professional">Professional</button>
+      <button class="waqr-set-btn" data-group="tone" data-value="friendly">Friendly</button>
+      <button class="waqr-set-btn" data-group="tone" data-value="direct">Direct</button>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Reply Style</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:16px;">
+      <button class="waqr-set-btn" data-group="replyStyle" data-value="short">Short</button>
+      <button class="waqr-set-btn" data-group="replyStyle" data-value="balanced">Balanced</button>
+      <button class="waqr-set-btn" data-group="replyStyle" data-value="detailed">Detailed</button>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Emoji Usage</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:16px;">
+      <button class="waqr-set-btn" data-group="emojiUsage" data-value="none">None</button>
+      <button class="waqr-set-btn" data-group="emojiUsage" data-value="minimal">Minimal</button>
+      <button class="waqr-set-btn" data-group="emojiUsage" data-value="natural">Natural</button>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:8px;">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#1e293b;">Auto Follow-ups</div>
+        <div style="font-size:11px;color:#94a3b8;">Suggest when to check in</div>
+      </div>
+      <label class="waqr-toggle"><input type="checkbox" id="waqr-set-followup" checked><span class="waqr-slider"></span></label>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:18px;">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#1e293b;">Style Learning</div>
+        <div style="font-size:11px;color:#94a3b8;">Match how you write</div>
+      </div>
+      <label class="waqr-toggle"><input type="checkbox" id="waqr-set-learning" checked><span class="waqr-slider"></span></label>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Account</div>
+    <div id="waqr-email-display" style="font-size:12px;color:#64748b;margin-bottom:8px;"></div>
+    <a href="#" id="waqr-change-email-toggle" style="display:block;font-size:13px;color:#27a55e;text-decoration:none;font-weight:600;margin-bottom:8px;">Change email address →</a>
+    <div id="waqr-change-email-box" style="display:none;">
+      <input type="email" id="waqr-change-current" placeholder="Current email" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;box-sizing:border-box;font-size:13px;">
+      <input type="email" id="waqr-change-new" placeholder="New email" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:8px;box-sizing:border-box;font-size:13px;">
+      <button id="waqr-change-email-save" style="background:#27a55e;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;width:100%;font-size:13px;font-weight:600;">Change Email</button>
+      <div id="waqr-change-email-error" style="color:#dc2626;font-size:12px;margin-top:6px;display:none;"></div>
     </div>
   `;
   shadow.appendChild(settingsPanel);
 
-  // Wire settings button
-  const settingsBtn = shadow.querySelector('#waqr-settings');
-  if (settingsBtn) {
-    settingsBtn.addEventListener('click', () => {
-      const isVisible = settingsPanel.style.display !== 'none';
-      settingsPanel.style.display = isVisible ? 'none' : 'block';
+  // Load saved settings into the panel UI
+  function loadSettingsUI() {
+    chrome.storage.local.get(['waqrSettings', 'email'], (r) => {
+      const s = r.waqrSettings || {};
+      const emailDisplay = shadow.getElementById('waqr-email-display');
+      if (emailDisplay) emailDisplay.textContent = r.email || '';
+
+      const toneDefault      = s.tone       || 'casual';
+      const styleDefault     = s.replyStyle || 'balanced';
+      const emojiDefault     = s.emojiUsage || 'natural';
+
+      settingsPanel.querySelectorAll('[data-group="tone"]').forEach(b =>
+        b.classList.toggle('active', b.dataset.value === toneDefault));
+      settingsPanel.querySelectorAll('[data-group="replyStyle"]').forEach(b =>
+        b.classList.toggle('active', b.dataset.value === styleDefault));
+      settingsPanel.querySelectorAll('[data-group="emojiUsage"]').forEach(b =>
+        b.classList.toggle('active', b.dataset.value === emojiDefault));
+
+      const fuEl = shadow.getElementById('waqr-set-followup');
+      if (fuEl) fuEl.checked = s.followUp !== 'disabled';
+      const learnEl = shadow.getElementById('waqr-set-learning');
+      if (learnEl) learnEl.checked = s.styleLearning !== 'off';
     });
   }
 
-  // Prefill email in settings
-  chrome.storage.local.get(['email'], (r) => {
-    const email = r && r.email;
-    const input = shadow.querySelector('#waqr-settings-email');
-    if (input && email) input.value = email;
+  // Wire settings button
+  const settingsBtn = shadow.querySelector('#waqr-settings');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = settingsPanel.style.display !== 'none';
+      if (isVisible) {
+        settingsPanel.style.display = 'none';
+      } else {
+        // Compute position from the panel's current location
+        const panelRect = panel.getBoundingClientRect();
+        const spWidth = 264;
+        let spLeft = panelRect.right - spWidth;
+        if (spLeft < 8) spLeft = 8;
+        settingsPanel.style.top  = (panelRect.top + 54) + 'px';
+        settingsPanel.style.left = spLeft + 'px';
+        settingsPanel.style.right = 'auto';
+        settingsPanel.style.display = 'block';
+        loadSettingsUI();
+      }
+    });
+  }
+
+  // Segmented buttons — save immediately
+  settingsPanel.querySelectorAll('.waqr-set-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const group = btn.dataset.group;
+      settingsPanel.querySelectorAll(`[data-group="${group}"]`).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      chrome.storage.local.get(['waqrSettings'], (r) => {
+        const s = r.waqrSettings || {};
+        s[group] = btn.dataset.value;
+        chrome.storage.local.set({ waqrSettings: s });
+      });
+    });
   });
 
-  // Save email from settings
-  const saveBtn = shadow.querySelector('#waqr-settings-save');
-  if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
-      const input = shadow.querySelector('#waqr-settings-email');
-      const val = (input.value || '').trim().toLowerCase();
-      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
-      if (!ok) { alert('Please enter a valid email address'); return; }
-      chrome.storage.local.set({ email: val }, () => {
-        settingsPanel.style.display = 'none';
-        location.reload(); // reload to reconnect SSE with new email
+  // Toggle: Follow-ups
+  const fuToggle = shadow.getElementById('waqr-set-followup');
+  if (fuToggle) {
+    fuToggle.addEventListener('change', () => {
+      chrome.storage.local.get(['waqrSettings'], (r) => {
+        const s = r.waqrSettings || {};
+        s.followUp = fuToggle.checked ? 'auto' : 'disabled';
+        chrome.storage.local.set({ waqrSettings: s });
       });
     });
   }
 
-  // Change email inline flow
+  // Toggle: Style Learning
+  const learnToggle = shadow.getElementById('waqr-set-learning');
+  if (learnToggle) {
+    learnToggle.addEventListener('change', () => {
+      chrome.storage.local.get(['waqrSettings'], (r) => {
+        const s = r.waqrSettings || {};
+        s.styleLearning = learnToggle.checked ? 'on' : 'off';
+        chrome.storage.local.set({ waqrSettings: s });
+      });
+    });
+  }
+
+  // Change email flow
   const changeToggle = shadow.querySelector('#waqr-change-email-toggle');
-  const changeBox = shadow.querySelector('#waqr-change-email-box');
+  const changeBox    = shadow.querySelector('#waqr-change-email-box');
   if (changeToggle && changeBox) {
     changeToggle.addEventListener('click', (e) => {
       e.preventDefault();
@@ -533,38 +630,31 @@
     });
 
     const changeSave = shadow.querySelector('#waqr-change-email-save');
-    const changeErr = shadow.querySelector('#waqr-change-email-error');
+    const changeErr  = shadow.querySelector('#waqr-change-email-error');
     changeSave.addEventListener('click', async () => {
       const cur = (shadow.querySelector('#waqr-change-current').value || '').trim().toLowerCase();
-      const nw = (shadow.querySelector('#waqr-change-new').value || '').trim().toLowerCase();
+      const nw  = (shadow.querySelector('#waqr-change-new').value  || '').trim().toLowerCase();
       changeErr.style.display = 'none';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cur) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nw)) {
+      const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!valid.test(cur) || !valid.test(nw)) {
         changeErr.textContent = 'Please enter valid emails'; changeErr.style.display = 'block'; return;
       }
       if (cur === nw) { changeErr.textContent = 'New email must be different'; changeErr.style.display = 'block'; return; }
-
-      // Call backend to update email
       try {
         const resp = await fetch('https://wa-quickreply-server.onrender.com/user/update-email', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ currentEmail: cur, newEmail: nw })
         });
         const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-          changeErr.textContent = data.error || data.message || `Failed (${resp.status})`;
-          changeErr.style.display = 'block';
-          return;
-        }
-
-        // Success: update storage and UI
+        if (!resp.ok) { changeErr.textContent = data.error || `Failed (${resp.status})`; changeErr.style.display = 'block'; return; }
         chrome.storage.local.set({ email: nw }, () => {
-          shadow.querySelector('#waqr-settings-email').value = nw;
           changeBox.style.display = 'none';
           settingsPanel.style.display = 'none';
-          showToast('Email updated');
-          // Update upgrade link param
+          showToast('Email updated ✅');
           const upgradeLink = shadow.querySelector('#waqr-upgrade-link');
           if (upgradeLink) upgradeLink.href = 'https://wa-quickreply-landing.vercel.app/#pricing?email=' + encodeURIComponent(nw);
+          const emailDisplay = shadow.getElementById('waqr-email-display');
+          if (emailDisplay) emailDisplay.textContent = nw;
         });
       } catch (err) {
         changeErr.textContent = 'Server error'; changeErr.style.display = 'block';
@@ -572,7 +662,7 @@
     });
   }
 
-  // Prefill upgrade link with stored email. Email management moved into settings.
+  // Prefill upgrade link with stored email
   (function setEmailDisplayAndUpgrade() {
     chrome.storage.local.get(['email'], (r) => {
       const email = (r && r.email) ? r.email : null;
@@ -1222,9 +1312,8 @@
   // ============================================================================
 
   shadow.getElementById('waqr-generate').addEventListener('click', () => {
-    const tone = shadow.getElementById('waqr-tone').value;
-    const context = getConversationContext();
-    const timeOfDay = getTimeOfDay();
+    const context    = getConversationContext();
+    const timeOfDay  = getTimeOfDay();
 
     if (!context || context.length < 1) {
       showToast('No recent chat messages found.');
@@ -1236,40 +1325,60 @@
     btn.innerHTML = '⌛ Generating...';
     btn.disabled = true;
 
-    // Build structured payload for AI that includes style examples, tone, and time context
     const messages = (context || []).map(m => ({ role: m.role, content: m.content }));
-    const myMessages = messages.filter(m => m.role === 'assistant').map(m => m.content || '');
-    const styleExamples = myMessages.slice(-10).join('\n');
-    const detectedTone = detectTone(messages.map(m => m.content || '')) || tone || 'casual';
-    const timeContext = getTimeContext() || timeOfDay;
 
-    const payload = { messages, styleExamples, tone: detectedTone, timeContext };
+    // MODE DETECTION — check who sent the last message
+    const lastMsg = messages[messages.length - 1];
+    const mode    = (lastMsg && lastMsg.role === 'assistant') ? 'follow_up' : 'reply';
 
-    // Show typing animation while background generates reply
+    // Show typing animation
     const suggestionsContainer = shadow.getElementById('waqr-suggestions');
     const typingEl = document.createElement('div');
     typingEl.className = 'waqr-typing';
-    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Generating...';
+    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> ' + (mode === 'follow_up' ? 'Thinking...' : 'Generating...');
     suggestionsContainer.innerHTML = '';
     suggestionsContainer.appendChild(typingEl);
 
-    chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
-      btn.classList.remove('generate');
-      btn.innerHTML = 'Generate AI Reply';
-      btn.disabled = false;
-      // Remove typing animation
-      if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
+    // Read user settings then fire
+    chrome.storage.local.get(['waqrSettings'], (r) => {
+      const s = r.waqrSettings || {};
+      const styleLearning  = s.styleLearning !== 'off';
+      const myMessages     = messages.filter(m => m.role === 'assistant').map(m => m.content || '');
+      const styleExamples  = styleLearning ? myMessages.slice(-10).join('\n') : '';
+      const detectedTone   = detectTone(messages.map(m => m.content || ''));
+      const timeContext    = getTimeContext() || timeOfDay;
 
-      if (response.error) {
-        showToast('⚠️ ' + response.error);
-        suggestionsContainer.innerHTML = `<div style="font-size:13px;color:#777">${response.error}</div>`;
-      } else if (response.suggestion) {
-        displaySuggestions([response.suggestion]);
-        showToast('✅ Suggestions ready!');
-      } else {
-        showToast('AI could not create a reply right now.');
-        suggestionsContainer.innerHTML = '<div style="font-size:13px;color:#777">AI did not return a suggestion.</div>';
-      }
+      const payload = {
+        messages,
+        styleExamples,
+        tone:             s.tone       || detectedTone || 'casual',
+        timeContext,
+        mode,
+        replyStyle:       s.replyStyle || 'balanced',
+        emojiUsage:       s.emojiUsage || 'natural',
+        followUpEnabled:  s.followUp   !== 'disabled'
+      };
+
+      chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
+        btn.classList.remove('generate');
+        btn.innerHTML = '✨ Generate AI Reply';
+        btn.disabled = false;
+        if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
+
+        if (response && response.noReply) {
+          suggestionsContainer.innerHTML = '<div style="font-size:13px;color:#888;text-align:center;padding:16px 8px;">💤 No follow-up needed right now</div>';
+          showToast('💤 No follow-up needed right now');
+        } else if (response && response.error) {
+          showToast('⚠️ ' + response.error);
+          suggestionsContainer.innerHTML = `<div style="font-size:13px;color:#777">${response.error}</div>`;
+        } else if (response && response.suggestion) {
+          displaySuggestions([response.suggestion]);
+          showToast(mode === 'follow_up' ? '✅ Follow-up ready!' : '✅ Reply ready!');
+        } else {
+          showToast('AI could not create a reply right now.');
+          suggestionsContainer.innerHTML = '<div style="font-size:13px;color:#777">AI did not return a suggestion.</div>';
+        }
+      });
     });
   });
 
@@ -1791,9 +1900,10 @@
 
       const modal = document.createElement('div');
       modal.className = 'onboarding-modal';
+      const onboardIconUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon128.png') : 'icons/icon128.png';
       modal.innerHTML = `
         <div class="onboarding-header">
-          <div class="onboarding-logo">✓</div>
+          <img src="${onboardIconUrl}" alt="WA QuickReply" style="width:48px;height:48px;border-radius:12px;object-fit:cover;flex-shrink:0;" />
           <div>
             <div class="onboarding-title">WA QuickReply</div>
             <div style="font-size: 12px; color: #94a3b8;">Activate to get started</div>
@@ -1801,7 +1911,7 @@
         </div>
         
         <div class="onboarding-subtitle">
-          Enter your email to unlock templates, AI replies, and Pro features.
+          Enter your email to unlock templates, AI replies, and improve feature.
         </div>
         
         <div class="onboarding-input-group">
