@@ -5,9 +5,31 @@ const FREE_AI_LIMIT = 5;
 const PRO_TIER_COST = 500; // .00 in cents
 
 // Initialize storage on install
+// Promisified storage helpers
+function storageGet(keys) {
+  return new Promise(resolve => chrome.storage.local.get(keys, resolve));
+}
+function storageSet(obj) {
+  return new Promise(resolve => chrome.storage.local.set(obj, resolve));
+}
+
+// Fetch with timeout helper for consistent network timeouts
+async function fetchWithTimeout(url, options = {}, timeout = 20000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('WA QuickReply extension installed');
-  
+
   // V11.0: Wake up the server on install/startup
   fetch(`${BACKEND_URL}/health`).catch(() => {});
 
@@ -16,18 +38,15 @@ chrome.runtime.onInstalled.addListener(async () => {
     console.log('Cleared stored positions');
   });
 
-  const existing = await chrome.storage.local.get();
-  if (!existing.templates) {
-    await chrome.storage.local.set({
+  const existing = await storageGet(null);
+  if (!existing || !existing.templates) {
+    await storageSet({
       templates: [],
       usage: { date: new Date().toISOString().split('T')[0], ai: 0 },
       subscription: { tier: 'free', expiresAt: null },
       apiKey: null
     });
   }
-
-  // After install, if user is not authenticated, open landing to prompt sign-up/sign-in
-  // Do NOT redirect users to landing on install. Keep onboarding in-extension.
 });
 
 // Listen for messages from content script
@@ -71,7 +90,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function generateAiReply(context, personality, sendResponse) {
   try {
-    const data = await chrome.storage.local.get(['subscription', 'apiKey', 'jwtToken']);
+    const data = await storageGet(['subscription', 'apiKey', 'jwtToken']);
     const subscription = data.subscription || { tier: 'free' };
     
     // Check if user can use AI
@@ -87,26 +106,16 @@ async function generateAiReply(context, personality, sendResponse) {
     
     console.log('[WAQR] Sending AI request:', { contextLength: context?.length, personality, url: `${BACKEND_URL}/generate-replies` });
 
-    // V12.0 - 10 Second Timeout Protection
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    // Call backend to generate replies
-    // Call backend to generate replies
+    // Use fetchWithTimeout for consistent timeout handling
     const headers = { 'Content-Type': 'application/json' };
     if (data.jwtToken) headers['Authorization'] = `Bearer ${data.jwtToken}`;
 
-    const response = await fetch(`${BACKEND_URL}/generate-replies`, {
+    const response = await fetchWithTimeout(`${BACKEND_URL}/generate-replies`, {
       method: 'POST',
-      headers: headers,
-      signal: controller.signal,
-      body: JSON.stringify({
-        transcript: context,  // array of { role, content, meta }
-        personality,
-        apiKey: data.apiKey || null
-      })
-    });
-    
+      headers,
+      body: JSON.stringify({ transcript: context, personality, apiKey: data.apiKey || null })
+    }, 20000);
+
     console.log('[WAQR] AI response status:', response.status);
 
     if (!response.ok) {
@@ -114,7 +123,7 @@ async function generateAiReply(context, personality, sendResponse) {
       console.error('[WAQR] AI error body:', error);
       throw new Error(error.error || error.message || `Server returned ${response.status}`);
     }
-    
+
     const result = await response.json();
     console.log('[WAQR] AI result:', result);
 
@@ -134,7 +143,7 @@ async function generateAiReply(context, personality, sendResponse) {
 // Improve a message using AI
 async function improveMessage(text, sendResponse) {
   try {
-    const data = await chrome.storage.local.get(['subscription', 'apiKey', 'jwtToken']);
+    const data = await storageGet(['subscription', 'apiKey', 'jwtToken']);
     const subscription = data.subscription || { tier: 'free' };
     
     // V12.0: UNLIMITED TESTING MODE
@@ -149,30 +158,18 @@ async function improveMessage(text, sendResponse) {
     
     console.log('[WAQR] Sending AI Improve request:', { textLength: text?.length, url: `${BACKEND_URL}/improve-message` });
 
-    // V12.0 - 10 Second Timeout Protection
-    const controller = new AbortController();
-    const abortTimeout = setTimeout(() => controller.abort(), 10000);
-
     const headers = { 'Content-Type': 'application/json' };
     if (data.jwtToken) headers['Authorization'] = `Bearer ${data.jwtToken}`;
 
-    const response = await fetch(`${BACKEND_URL}/improve-message`, {
-      method: 'POST',
-      headers: headers,
-      signal: controller.signal,
-      body: JSON.stringify({
-        text,
-        apiKey: data.apiKey || null
-      })
-    });
-    
-    clearTimeout(abortTimeout);
-    
+    const response = await fetchWithTimeout(`${BACKEND_URL}/improve-message`, {
+      method: 'POST', headers, body: JSON.stringify({ text, apiKey: data.apiKey || null })
+    }, 20000);
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error || error.message || `Server returned ${response.status}`);
     }
-    
+
     const result = await response.json();
     
     // Update usage if free tier
@@ -196,7 +193,7 @@ async function checkUsageLimit(type) {
 
 // Increment usage counter
 async function incrementUsage(type) {
-  const data = await chrome.storage.local.get('usage');
+  const data = await storageGet('usage');
   let usage = data.usage || { date: '', ai: 0 };
   
   const today = new Date().toISOString().split('T')[0];
@@ -208,7 +205,7 @@ async function incrementUsage(type) {
     usage.ai++;
   }
   
-  await chrome.storage.local.set({ usage });
+  await storageSet({ usage });
 }
 
 // Handle notification button clicks (Partially removed as only used by schedules)

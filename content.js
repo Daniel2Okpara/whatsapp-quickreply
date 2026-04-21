@@ -361,6 +361,31 @@
       opacity: 0.8;
       cursor: wait;
     }
+    /* Typing animation similar to WhatsApp three dots */
+    .waqr-typing {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      padding: 8px 12px;
+      background: #f1f3f2;
+      border-radius: 18px;
+      max-width: 100%;
+    }
+    .waqr-typing .dot {
+      width: 8px;
+      height: 8px;
+      background: #6b7280;
+      border-radius: 50%;
+      opacity: 0.9;
+      transform: translateY(0);
+      animation: waqr-bounce 1s infinite ease-in-out;
+    }
+    .waqr-typing .dot.d2 { animation-delay: 0.12s; }
+    .waqr-typing .dot.d3 { animation-delay: 0.24s; }
+    @keyframes waqr-bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.6; }
+      40% { transform: translateY(-6px); opacity: 1; }
+    }
   `;
   shadow.appendChild(styleEl);
 
@@ -1206,18 +1231,30 @@
     btn.innerHTML = '⌛ Generating...';
     btn.disabled = true;
 
+    // Show typing animation while background generates reply
+    const suggestionsContainer = shadow.getElementById('waqr-suggestions');
+    const typingEl = document.createElement('div');
+    typingEl.className = 'waqr-typing';
+    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Generating...';
+    suggestionsContainer.innerHTML = '';
+    suggestionsContainer.appendChild(typingEl);
+
     chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: context, personality: tone, timeOfDay }, (response) => {
       btn.classList.remove('generate');
       btn.innerHTML = 'Generate AI Reply';
       btn.disabled = false;
+      // Remove typing animation
+      if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
 
       if (response.error) {
         showToast('⚠️ ' + response.error);
+        suggestionsContainer.innerHTML = `<div style="font-size:13px;color:#777">${response.error}</div>`;
       } else if (response.suggestion) {
         displaySuggestions([response.suggestion]);
         showToast('✅ Suggestions ready!');
       } else {
         showToast('AI could not create a reply right now.');
+        suggestionsContainer.innerHTML = '<div style="font-size:13px;color:#777">AI did not return a suggestion.</div>';
       }
     });
   });
