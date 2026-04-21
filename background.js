@@ -104,16 +104,35 @@ async function generateAiReply(context, personality, sendResponse) {
     }
     */
     
-    console.log('[WAQR] Sending AI request:', { contextLength: context?.length, personality, url: `${BACKEND_URL}/generate-replies` });
+    // Determine payload shape: accept legacy transcript array or full payload object
+    let endpoint = `${BACKEND_URL}/generate-replies`;
+    let body = {};
+
+    if (context && typeof context === 'object' && Array.isArray(context.messages)) {
+      // New structured payload from content script
+      endpoint = `${BACKEND_URL}/ai-reply`;
+      body = {
+        messages: context.messages,
+        styleExamples: context.styleExamples,
+        tone: context.tone,
+        timeContext: context.timeContext,
+        apiKey: data.apiKey || null
+      };
+    } else {
+      endpoint = `${BACKEND_URL}/generate-replies`;
+      body = { transcript: context, personality, apiKey: data.apiKey || null };
+    }
+
+    console.log('[WAQR] Sending AI request to', endpoint);
 
     // Use fetchWithTimeout for consistent timeout handling
     const headers = { 'Content-Type': 'application/json' };
     if (data.jwtToken) headers['Authorization'] = `Bearer ${data.jwtToken}`;
 
-    const response = await fetchWithTimeout(`${BACKEND_URL}/generate-replies`, {
+    const response = await fetchWithTimeout(endpoint, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ transcript: context, personality, apiKey: data.apiKey || null })
+      body: JSON.stringify(body)
     }, 20000);
 
     console.log('[WAQR] AI response status:', response.status);
@@ -132,7 +151,7 @@ async function generateAiReply(context, personality, sendResponse) {
       await incrementUsage('ai');
     }
     
-    const suggestion = result.replies?.[0] || result.suggestions?.[0] || result.text || result.reply || '';
+    const suggestion = result.reply || result.replies?.[0] || result.suggestions?.[0] || result.text || '';
     sendResponse({ suggestion: suggestion || 'Could not generate a reply right now.' });
   } catch (error) {
     console.error('[WAQR] AI Error:', error);

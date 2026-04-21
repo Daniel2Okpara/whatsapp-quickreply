@@ -1231,6 +1231,15 @@
     btn.innerHTML = '⌛ Generating...';
     btn.disabled = true;
 
+    // Build structured payload for AI that includes style examples, tone, and time context
+    const messages = (context || []).map(m => ({ role: m.role, content: m.content }));
+    const myMessages = messages.filter(m => m.role === 'assistant').map(m => m.content || '');
+    const styleExamples = myMessages.slice(-10).join('\n');
+    const detectedTone = detectTone(messages.map(m => m.content || '')) || tone || 'casual';
+    const timeContext = getTimeContext() || timeOfDay;
+
+    const payload = { messages, styleExamples, tone: detectedTone, timeContext };
+
     // Show typing animation while background generates reply
     const suggestionsContainer = shadow.getElementById('waqr-suggestions');
     const typingEl = document.createElement('div');
@@ -1239,7 +1248,7 @@
     suggestionsContainer.innerHTML = '';
     suggestionsContainer.appendChild(typingEl);
 
-    chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: context, personality: tone, timeOfDay }, (response) => {
+    chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
       btn.classList.remove('generate');
       btn.innerHTML = 'Generate AI Reply';
       btn.disabled = false;
@@ -1258,6 +1267,30 @@
       }
     });
   });
+
+  // Heuristic tone detection
+  function detectTone(messagesArray) {
+    const text = (messagesArray || []).join(' ').toLowerCase();
+    if (!text) return 'casual';
+    if (
+      text.includes('meeting') ||
+      text.includes('schedule') ||
+      text.includes('regards') ||
+      text.includes('appointment') ||
+      text.includes('invoice') ||
+      text.includes('payment')
+    ) {
+      return 'professional';
+    }
+    return 'casual';
+  }
+
+  function getTimeContext() {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'morning';
+    if (hour < 18) return 'afternoon';
+    return 'evening';
+  }
 
   function displaySuggestions(suggestions) {
     const container = shadow.getElementById('waqr-suggestions');
