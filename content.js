@@ -403,10 +403,15 @@
   // Main Panel
   const panel = document.createElement('div');
   panel.id = 'waqr-panel';
+  const iconUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon128.png') : 'icons/icon128.png';
   panel.innerHTML = `
     <div id='waqr-header'>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span>WA QuickReply</span>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <img src="${iconUrl}" alt="WA QuickReply" style="width:44px;height:44px;border-radius:10px;object-fit:cover;" />
+        <div style="display:flex; flex-direction:column;">
+          <span style="font-size:16px; font-weight:700;">WA QuickReply</span>
+          <span style="font-size:12px; opacity:0.9;">Activate to get started</span>
+        </div>
         <span id="waqr-pro-badge" style="display:none; background:rgba(255,255,255,0.2); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; letter-spacing:0.5px;">PRO</span>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
