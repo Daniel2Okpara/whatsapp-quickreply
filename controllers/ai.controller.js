@@ -154,3 +154,65 @@ exports.improveMessage = async (req, res) => {
     res.status(500).json({ error: 'Failed to improve message. Please try again.' });
   }
 };
+
+// Compatibility endpoint: POST /ai-reply
+exports.aiReply = async (req, res) => {
+  try {
+    const { messages, personality, apiKey } = req.body;
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'Messages required' });
+    }
+
+    const effectiveApiKey = apiKey || process.env.OPENAI_API_KEY;
+    if (!effectiveApiKey) return res.status(500).json({ error: 'AI service unavailable (Missing API Key)' });
+
+    const openai = new OpenAI({ apiKey: effectiveApiKey });
+
+    const systemPrompt = `You are a WhatsApp assistant. Reply naturally based on context and personality: ${personality || 'normal'}. Use emojis when appropriate.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...messages
+      ],
+      temperature: 0.8,
+      max_tokens: 200
+    });
+
+    const reply = completion.choices?.[0]?.message?.content?.trim() || '';
+    return res.json({ reply });
+  } catch (err) {
+    console.error('AI Reply Error:', err?.message || err);
+    return res.status(500).json({ error: 'AI reply failed' });
+  }
+};
+
+// Compatibility endpoint: POST /ai-improve
+exports.aiImprove = async (req, res) => {
+  try {
+    const { text, tone, apiKey } = req.body;
+    if (!text) return res.status(400).json({ error: 'Text required' });
+
+    const effectiveApiKey = apiKey || process.env.OPENAI_API_KEY;
+    if (!effectiveApiKey) return res.status(500).json({ error: 'AI service unavailable (Missing API Key)' });
+
+    const openai = new OpenAI({ apiKey: effectiveApiKey });
+
+    const prompt = `Improve this WhatsApp message in a ${tone || 'clear and friendly'} tone:\n\n${text}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [ { role: 'user', content: prompt } ],
+      temperature: 0.7,
+      max_tokens: 250
+    });
+
+    const improved = completion.choices?.[0]?.message?.content?.trim() || '';
+    return res.json({ improved });
+  } catch (err) {
+    console.error('Improve Error:', err?.message || err);
+    return res.status(500).json({ error: 'Improve failed' });
+  }
+};

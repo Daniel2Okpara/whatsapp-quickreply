@@ -27,8 +27,6 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/auth', authRoutes);
-app.use('/', aiRoutes);
-
 // Paddle webhook needs raw body parsing to verify signature
 app.post('/webhook/paddle', express.raw({ type: '*/*' }), (req, res, next) => {
   req.rawBody = req.body; // Buffer
@@ -38,6 +36,9 @@ app.post('/webhook/paddle', express.raw({ type: '*/*' }), (req, res, next) => {
 // Now parse JSON for other routes
 app.use(express.json());
 
+// Mount auth and API routes after JSON body parser
+app.use('/auth', authRoutes);
+app.use('/', aiRoutes);
 app.use('/', userRoutes);
 
 // Admin routes (protected by admin secret header)
