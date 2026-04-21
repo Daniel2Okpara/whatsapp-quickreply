@@ -158,7 +158,7 @@ exports.improveMessage = async (req, res) => {
 // Compatibility endpoint: POST /ai-reply
 exports.aiReply = async (req, res) => {
   try {
-    const { messages, personality, apiKey } = req.body;
+    const { messages, styleExamples, tone, timeContext, apiKey } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Messages required' });
@@ -169,16 +169,83 @@ exports.aiReply = async (req, res) => {
 
     const openai = new OpenAI({ apiKey: effectiveApiKey });
 
-    const systemPrompt = `You are a WhatsApp assistant. Reply naturally based on context and personality: ${personality || 'normal'}. Use emojis when appropriate.`;
+    const systemPrompt = `You are replying as the owner of this WhatsApp account.
+
+IDENTITY RULES:
+- You are "ME" (the user of the extension).
+- NEVER reply as the other person.
+- Messages labeled "user" are from the OTHER PERSON.
+- Messages labeled "assistant" are from ME.
+
+PRIMARY TASK:
+Generate a natural reply as ME based on the conversation.
+
+CONTEXT RULES:
+- Read the full conversation carefully.
+- Understand what the other person is saying.
+- Continue the conversation logically.
+- Do NOT repeat previous messages.
+- Do NOT ask unnecessary questions.
+
+STYLE MIMICRY:
+- Match my writing style using the examples provided.
+- If I am short → be short.
+- If I am expressive → be expressive.
+- If I use emojis → use emojis naturally.
+- If I avoid emojis → do not force them.
+
+TONE ADAPTATION:
+- If tone is professional → be clear, polite, and structured.
+- If tone is casual → be relaxed and conversational.
+
+TIME AWARENESS:
+- Morning → light greeting if appropriate
+- Evening → relaxed tone
+- Late night → softer, minimal tone
+
+HUMAN-LIKE BEHAVIOR:
+- Avoid robotic phrases
+- Avoid overly formal language unless necessary
+- Avoid sounding like AI
+- Keep replies realistic and believable
+
+CONSTRAINTS:
+- Do NOT over-explain
+- Do NOT generate long paragraphs unless needed
+- Keep replies concise and natural
+
+GOAL:
+The reply must feel like something I would naturally type myself.`;
+
+    // Build messages for OpenAI following the master prompt structure
+    const aiMessages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Here are examples of how I usually reply:\n${styleExamples || ''}` },
+      { role: 'user', content: `Conversation tone: ${tone || 'casual'}` },
+      { role: 'user', content: `Time of day: ${timeContext || 'day'}` }
+    ];
+
+    // If the last message in the conversation was sent by ME (role === 'assistant'),
+    // explicitly instruct the model to generate the *next* message I (the user) would send
+    // as a follow-up (instead of replying as the other person). This avoids cases
+    // where the model mistakenly replies as the other participant when continuing a
+    // conversation started by the user.
+    const lastMsg = Array.isArray(messages) && messages.length ? messages[messages.length - 1] : null;
+    if (lastMsg && lastMsg.role === 'assistant') {
+      aiMessages.push({
+        role: 'user',
+        content: 'Note: the most recent message(s) are from ME. Please generate the next message I would send to the other person as a follow-up. Do NOT reply as the other person.'
+      });
+    }
+
+    // Append the conversation messages after the instructions
+    aiMessages.push(...messages);
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages
-      ],
-      temperature: 0.8,
-      max_tokens: 200
+      messages: aiMessages,
+      temperature: 0.7,
+      max_tokens: 250
     });
 
     const reply = completion.choices?.[0]?.message?.content?.trim() || '';
