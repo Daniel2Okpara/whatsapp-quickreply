@@ -383,6 +383,62 @@
       0%, 80%, 100% { transform: translateY(0); opacity: 0.6; }
       40% { transform: translateY(-6px); opacity: 1; }
     }
+    #waqr-panel.trial-theme {
+      --waqr-primary: #0ea5e9;
+      border: 2px solid #0ea5e9;
+    }
+    #waqr-panel.trial-theme #waqr-header {
+      background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+    }
+
+    .waqr-usage-container {
+      background: #f1f5f9;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      border: 1px solid #e2e8f0;
+    }
+    .waqr-usage-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    .waqr-usage-item:last-child { margin-bottom: 0; }
+    .waqr-usage-val { font-weight: 700; color: #1e293b; }
+    .waqr-usage-bar {
+      height: 4px; background: #e2e8f0; border-radius: 2px;
+      margin-top: 4px; overflow: hidden;
+    }
+    .waqr-usage-fill {
+      height: 100%; background: var(--waqr-primary);
+      transition: width 0.3s ease;
+    }
+
+    /* Upgrade Modal */
+    .waqr-modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 2000000; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .waqr-modal-overlay.active { opacity: 1; pointer-events: auto; }
+    .waqr-modal {
+      background: white; padding: 32px; border-radius: 20px;
+      width: 320px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+      transform: translateY(20px); transition: transform 0.3s;
+    }
+    .waqr-modal-overlay.active .waqr-modal { transform: translateY(0); }
+    .waqr-modal h2 { font-size: 22px; font-weight: 800; margin-bottom: 12px; }
+    .waqr-modal p { font-size: 14px; color: #64748b; line-height: 1.5; margin-bottom: 24px; }
+    .waqr-modal-btn {
+      width: 100%; padding: 14px; border-radius: 12px; font-weight: 700;
+      border: none; cursor: pointer; transition: 0.2s;
+    }
+    .waqr-modal-btn.primary { background: var(--waqr-primary); color: white; margin-bottom: 10px; }
+    .waqr-modal-btn.secondary { background: #f1f5f9; color: #64748b; }
 
     .waqr-set-btn {
       padding: 6px 4px; border: 1.5px solid #e2e8f0; border-radius: 6px;
@@ -400,6 +456,19 @@
     .waqr-toggle input:checked + .waqr-slider:before { transform: translateX(20px); }
   `;
   shadow.appendChild(styleEl);
+
+  // Upgrade Modal
+  const modalOverlay = document.createElement('div');
+  modalOverlay.className = 'waqr-modal-overlay';
+  modalOverlay.innerHTML = `
+    <div class="waqr-modal">
+      <h2>Upgrade to Pro 🚀</h2>
+      <p id="waqr-modal-msg">You've reached your daily limit of 10 AI actions. Upgrade to continue using AI features without limits.</p>
+      <button class="waqr-modal-btn primary" id="waqr-modal-upgrade">Upgrade Now</button>
+      <button class="waqr-modal-btn secondary" id="waqr-modal-close">Maybe Later</button>
+    </div>
+  `;
+  shadow.appendChild(modalOverlay);
 
   // ============================================================================
   // 2. UI COMPONENTS
@@ -422,10 +491,11 @@
         <img src="${iconUrl}" alt="WA QuickReply" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0;" />
         <span style="font-size:15px; font-weight:700; white-space:nowrap;">WA QuickReply</span>
         <span id="waqr-pro-badge" style="display:none; background:rgba(255,255,255,0.2); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; letter-spacing:0.5px;">PRO</span>
+        <span id="waqr-trial-badge" style="display:none; background:rgba(255,255,255,0.2); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; letter-spacing:0.5px;">TRIAL</span>
       </div>
       <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
         <button id='waqr-settings' title='Settings' style='background: none; border: none; color: white; font-size: 16px; cursor: pointer; display:flex; align-items:center; padding:4px; border-radius:6px; transition: background 0.2s;' onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">⚙️</button>
-        <a href="https://wa-quickreply-landing.vercel.app/#pricing" target="_blank" id="waqr-upgrade-link" style="color:white; font-size:11px; text-decoration:underline; font-weight:500; white-space:nowrap;">Upgrade to Pro</a>
+        <a href="https://wa-quickreply-landing.vercel.app/#pricing" target="_blank" id="waqr-upgrade-link" style="color:white; font-size:11px; text-decoration:underline; font-weight:500; white-space:nowrap;">Upgrade</a>
         <button id='waqr-close' style='background: none; border: none; color: white; font-size: 20px; cursor: pointer; display:flex; align-items:center; padding:4px;'>×</button>
       </div>
     </div>
@@ -435,6 +505,13 @@
     </div>
     <div id='waqr-content'>
       <div class='waqr-section active' data-section='templates'>
+        <div class="waqr-usage-container" id="waqr-usage-templates" style="display:none;">
+          <div class="waqr-usage-item">
+            <span>Improve Used</span>
+            <span class="waqr-usage-val"><span id="waqr-usage-improve-count">0</span>/10</span>
+          </div>
+          <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-improve-fill" style="width: 0%;"></div></div>
+        </div>
         <div style='font-size: 13px; color: #555; margin-bottom: 8px;'>Save and reuse your best replies</div>
         <div style='display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;'>
           <button class='waqr-btn secondary waqr-category active' data-category='All'>All</button>
@@ -442,9 +519,9 @@
           <button class='waqr-btn secondary waqr-category' data-category='Follow-ups'>Follow-ups</button>
           <button class='waqr-btn secondary waqr-category' data-category='Greetings'>Greetings</button>
         </div>
-        <div id='waqr-recent-templates' style='font-size: 13px; color: #444; margin-bottom: 12px;'>⭐ Recently Used Templates will appear here</div>
+        <div id='waqr-recent-templates' style='font-size: 13px; color: #444; margin-bottom: 12px;'>⭐ Suggested templates appear here</div>
         <div id='waqr-templates-list' style='max-height: 140px; overflow-y: auto; margin-bottom: 8px;'></div>
-        <textarea class='waqr-input' id='waqr-template-message' placeholder='Template message e.g., "Hi, here are our products: \n1. Product A \n2. Product B"'></textarea>
+        <textarea class='waqr-input' id='waqr-template-message' placeholder='Template message...'></textarea>
         <select class='waqr-input' id='waqr-template-category'>
           <option value='Pricing'>Pricing</option>
           <option value='Follow-ups'>Follow-ups</option>
@@ -454,12 +531,18 @@
         <button class='waqr-btn' id='waqr-add-template'>+ Add Template</button>
       </div>
       <div class='waqr-section' data-section='ai'>
+        <div class="waqr-usage-container" id="waqr-usage-ai" style="display:none;">
+          <div class="waqr-usage-item">
+            <span>AI Replies Used</span>
+            <span class="waqr-usage-val"><span id="waqr-usage-ai-count">0</span>/10</span>
+          </div>
+          <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-ai-fill" style="width: 0%;"></div></div>
+          <div id="waqr-trial-countdown" style="font-size:10px; color:#94a3b8; margin-top:6px; display:none;"></div>
+        </div>
         <div style='font-size: 13px; color: #555; margin-bottom: 4px;'>Generate smart responses instantly</div>
         <div style='font-size: 11px; color: #94a3b8; margin-bottom: 12px;'>Tone &amp; style controlled in ⚙️ Settings</div>
         <button class='waqr-btn' id='waqr-generate'>✨ Generate AI Reply</button>
         <div id='waqr-suggestions' style='margin-top: 12px;'></div>
-      </div>
-    </div>
       </div>
     </div>
   `;
@@ -954,6 +1037,12 @@
         improveBtn.innerHTML = '<span>✨</span> Improve';
         improveBtn.style.background = '#25D366';
 
+        if (response && response.limitReached) {
+          showUpgradeModal(response.message);
+          syncPlanState();
+          return;
+        }
+
         if (response?.error) {
            showToast('❌ Failed to improve message');
         } else if (response?.improvedText || response?.suggestion) {
@@ -977,6 +1066,7 @@
            activeInput.dispatchEvent(new InputEvent("input", { bubbles: true }));
            showToast('✅ Message improved');
            updateImproveButtonPosition();
+           syncPlanState();
         } else {
            showToast('❌ Failed to improve message');
         }
@@ -1304,7 +1394,75 @@
   }
 
   // ============================================================================
-  // 6. AI REPLY GENERATION
+  // 6. PLAN & USAGE SYNC
+  // ============================================================================
+  function syncPlanState() {
+    chrome.runtime.sendMessage({ type: 'GET_PLAN_STATE' }, (state) => {
+      if (!state) return;
+      updateUIForPlan(state);
+    });
+  }
+
+  function updateUIForPlan(state) {
+    const { plan, usage, trialEnd } = state;
+    const isPro = plan === 'pro';
+    const isTrial = plan === 'trial';
+    const isFree = plan === 'free' || !plan;
+
+    // Badges & Links
+    shadow.getElementById('waqr-pro-badge').style.display = isPro ? 'inline-block' : 'none';
+    shadow.getElementById('waqr-trial-badge').style.display = isTrial ? 'inline-block' : 'none';
+    shadow.getElementById('waqr-upgrade-link').style.display = isPro ? 'none' : 'inline-block';
+
+    // Theme
+    panel.classList.toggle('pro-theme', isPro);
+    panel.classList.toggle('trial-theme', isTrial);
+
+    // Usage Counters
+    if (isFree || isTrial) {
+      shadow.getElementById('waqr-usage-templates').style.display = 'block';
+      shadow.getElementById('waqr-usage-ai').style.display = 'block';
+      
+      const aiCount = usage?.aiReply || 0;
+      const improveCount = usage?.improve || 0;
+
+      shadow.getElementById('waqr-usage-ai-count').textContent = aiCount;
+      shadow.getElementById('waqr-usage-ai-fill').style.width = (aiCount * 10) + '%';
+      shadow.getElementById('waqr-usage-improve-count').textContent = improveCount;
+      shadow.getElementById('waqr-usage-improve-fill').style.width = (improveCount * 10) + '%';
+
+      if (isTrial && trialEnd) {
+        const left = new Date(trialEnd) - new Date();
+        const days = Math.ceil(left / (1000 * 60 * 60 * 24));
+        const countdown = shadow.getElementById('waqr-trial-countdown');
+        countdown.style.display = 'block';
+        countdown.textContent = `🎁 Free Trial: ${days} day${days !== 1 ? 's' : ''} left`;
+      }
+    } else {
+      shadow.getElementById('waqr-usage-templates').style.display = 'none';
+      shadow.getElementById('waqr-usage-ai').style.display = 'none';
+    }
+  }
+
+  function showUpgradeModal(msg) {
+    if (msg) shadow.getElementById('waqr-modal-msg').textContent = msg;
+    modalOverlay.classList.add('active');
+  }
+
+  shadow.getElementById('waqr-modal-close').addEventListener('click', () => {
+    modalOverlay.classList.remove('active');
+  });
+
+  shadow.getElementById('waqr-modal-upgrade').addEventListener('click', () => {
+    window.open('https://wa-quickreply-landing.vercel.app/#pricing', '_blank');
+    modalOverlay.classList.remove('active');
+  });
+
+  // Call sync on open
+  fab.addEventListener('click', syncPlanState);
+
+  // ============================================================================
+  // 7. AI REPLY GENERATION
   // ============================================================================
 
   shadow.getElementById('waqr-generate').addEventListener('click', () => {
@@ -1322,12 +1480,9 @@
     btn.disabled = true;
 
     const messages = (context || []).map(m => ({ role: m.role, content: m.content }));
-
-    // MODE DETECTION — check who sent the last message
     const lastMsg = messages[messages.length - 1];
     const mode    = (lastMsg && lastMsg.role === 'assistant') ? 'follow_up' : 'reply';
 
-    // Show typing animation
     const suggestionsContainer = shadow.getElementById('waqr-suggestions');
     const typingEl = document.createElement('div');
     typingEl.className = 'waqr-typing';
@@ -1335,7 +1490,6 @@
     suggestionsContainer.innerHTML = '';
     suggestionsContainer.appendChild(typingEl);
 
-    // Read user settings then fire
     chrome.storage.local.get(['waqrSettings'], (r) => {
       const s = r.waqrSettings || {};
       const styleLearning  = s.styleLearning !== 'off';
@@ -1361,15 +1515,21 @@
         btn.disabled = false;
         if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
 
+        if (response && response.limitReached) {
+          showUpgradeModal(response.message);
+          syncPlanState();
+          return;
+        }
+
         if (response && response.noReply) {
           suggestionsContainer.innerHTML = '<div style="font-size:13px;color:#888;text-align:center;padding:16px 8px;">💤 No follow-up needed right now</div>';
-          showToast('💤 No follow-up needed right now');
         } else if (response && response.error) {
           showToast('⚠️ ' + response.error);
           suggestionsContainer.innerHTML = `<div style="font-size:13px;color:#777">${response.error}</div>`;
         } else if (response && response.suggestion) {
           displaySuggestions([response.suggestion]);
           showToast(mode === 'follow_up' ? '✅ Follow-up ready!' : '✅ Reply ready!');
+          syncPlanState();
         } else {
           showToast('AI could not create a reply right now.');
           suggestionsContainer.innerHTML = '<div style="font-size:13px;color:#777">AI did not return a suggestion.</div>';
@@ -1548,51 +1708,28 @@
   // 9. INITIALIZATION
   // ============================================================================
 
-  // ============================================================================
-  // 9. INITIALIZATION & SUBSCRIPTION
-  // ============================================================================
-
-  function updateTierUI() {
+  function initializeComponents() {
     if (!isContextValid()) {
-      const panel = shadow.getElementById('waqr-panel');
-      if (panel) {
-        panel.style.border = '2px solid #ff4d4d';
-        panel.innerHTML = `
-          <div style="padding: 20px; text-align: center; color: #ff4d4d; font-weight: bold;">
-            <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
-            Extension Updated<br>Please refresh WhatsApp to continue.
-            <button onclick="window.location.reload()" style="margin-top: 15px; padding: 8px 16px; background: #ff4d4d; color: white; border: none; border-radius: 6px; cursor: pointer;">Refresh Now</button>
-          </div>
-        `;
+      const p = shadow.getElementById('waqr-panel');
+      if (p) {
+        p.style.border = '2px solid #ff4d4d';
+        p.innerHTML = `<div style="padding:20px;text-align:center;color:#ff4d4d;font-weight:700;">⚠️ Extension Updated<br>Please refresh WhatsApp.</div>`;
       }
       return;
     }
-    chrome.storage.local.get(['subscription'], (data) => {
-      const tier = data.subscription?.tier || 'free';
-      const panel = shadow.getElementById('waqr-panel');
-      const proBadge = shadow.getElementById('waqr-pro-badge');
-      const upgradeLink = shadow.getElementById('waqr-upgrade-link');
-
-      if (tier === 'pro') {
-        panel.classList.add('pro-theme');
-        proBadge.style.display = 'inline-block';
-        upgradeLink.style.display = 'none';
-      } else {
-        panel.classList.remove('pro-theme');
-        proBadge.style.display = 'none';
-        upgradeLink.style.display = 'inline-block';
-      }
-    });
+    loadTemplates();
+    updateFabPosition();
+    syncPlanState();
   }
 
-  loadTemplates();
-  updateFabPosition();
-  updateTierUI();
-  
-  // Listen for storage changes (e.g. user upgrades)
-  chrome.storage.onChanged.addListener((changes) => {
-    if (changes.subscription) updateTierUI();
+  // Listen for storage changes (e.g. user upgrades or usage updates in another tab)
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && (changes.plan || changes.usage || changes.subscription)) {
+      syncPlanState();
+    }
   });
+
+  initializeComponents();
 
   function getCurrentChatName() {
     // Probe 1: Primary data-testid (Standard)
@@ -1785,6 +1922,7 @@
       } else {
         panel.style.display = 'flex';
         positionPanel();
+        syncPlanState();
       }
       sendResponse({ success: true });
       return false;
