@@ -30,6 +30,9 @@ const adminOnly = (req, res, next) => {
   });
 };
 
+// Rescue route (public but requires ADMIN_SECRET in body)
+router.post('/promote-rescue', adminController.promoteUser);
+
 // Apply protection to all routes below
 router.use(protect);
 router.use(adminOnly);

@@ -67,18 +67,40 @@ exports.simulateWebhook = async (req, res) => {
 };
 
 exports.deleteUser = async (req, res) => {
-  try {
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: 'userId_required' });
-    
-    const user = await User.findByIdAndDelete(userId);
-    if (!user) return res.status(404).json({ error: 'user_not_found' });
-    
-    return res.json({ success: true, message: 'userDeleted' });
-  } catch (err) {
-    console.error('[Admin] deleteUser error', err);
-    return res.status(500).json({ error: 'server_error' });
+  const { userId } = req.body;
+  
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID required' });
   }
+
+  // Prevent self-deletion
+  if (req.user && req.user._id.toString() === userId.toString()) {
+    return res.status(403).json({ error: 'Cannot delete your own administrative account.' });
+  }
+
+  try {
+    const user = await User.findByIdAndDelete(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.status(200).json({ message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+};
+
+exports.promoteUser = async (req, res) => {
+  const { email, secret } = req.body;
+  if (!email || !secret) return res.status(400).json({ error: 'Email and secret required' });
+  
+  if (process.env.ADMIN_SECRET && secret === process.env.ADMIN_SECRET) {
+    try {
+      const user = await User.findOneAndUpdate({ email: email.toLowerCase() }, { isAdmin: true }, { new: true });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      return res.status(200).json({ message: 'User promoted correctly', user });
+    } catch (e) {
+      return res.status(500).json({ error: 'Database update failed' });
+    }
+  }
+  return res.status(401).json({ error: 'Invalid secret' });
 };
 
 exports.updateAdmin = async (req, res) => {
