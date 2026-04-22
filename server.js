@@ -18,6 +18,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 // NOTE: We mount the JSON body parser after the raw webhook route to avoid
 // the global JSON parser consuming the webhook payload stream.
 
@@ -26,7 +27,6 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'WA QuickReply Backend is running' });
 });
 
-app.use('/auth', authRoutes);
 // Paddle webhook needs raw body parsing to verify signature
 app.post('/webhook/paddle', express.raw({ type: '*/*' }), (req, res, next) => {
   req.rawBody = req.body; // Buffer
