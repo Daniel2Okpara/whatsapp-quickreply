@@ -9,18 +9,25 @@ const { protect } = require('../middleware/auth.middleware');
  * AND the user must have 'isAdmin: true' in the database.
  */
 const adminOnly = (req, res, next) => {
-  if (req.user && req.user.isAdmin) {
+  const secret = process.env.ADMIN_SECRET;
+  const header = req.headers['x-admin-secret'];
+
+  // Check 1: User has 'isAdmin' in their JWT
+  if (req.user && req.user.isAdmin === true) {
     return next();
   }
   
-  // FALLBACK: Allow 'x-admin-secret' for legacy support or manual overrides
-  const secret = process.env.ADMIN_SECRET;
-  const header = req.headers['x-admin-secret'];
+  // Check 2: Fallback to Secret Header (Safety Bypass)
   if (secret && header && header === secret) {
+    console.log('[Admin] Access granted via Secret Header.');
     return next();
   }
 
-  return res.status(403).json({ error: 'forbidden: admin access required' });
+  console.error('[Admin] Forbidden: User is not an admin.', { email: req.user?.email });
+  return res.status(403).json({ 
+    error: 'forbidden: admin access required',
+    message: 'Your account lacks administrator privileges. Please register as the first user or provide the Admin Secret.'
+  });
 };
 
 // Apply protection to all routes below
