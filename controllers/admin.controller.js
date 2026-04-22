@@ -66,6 +66,37 @@ exports.simulateWebhook = async (req, res) => {
   }
 };
 
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId_required' });
+    
+    const user = await User.findByIdAndDelete(userId);
+    if (!user) return res.status(404).json({ error: 'user_not_found' });
+    
+    return res.json({ success: true, message: 'userDeleted' });
+  } catch (err) {
+    console.error('[Admin] deleteUser error', err);
+    return res.status(500).json({ error: 'server_error' });
+  }
+};
+
+exports.updateAdmin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findById(req.user._id);
+    
+    if (email) user.email = email;
+    if (password) user.password = password; // Pre-save hook in user model handles hashing
+    
+    await user.save();
+    return res.json({ success: true, message: 'Account updated successfully' });
+  } catch (err) {
+    console.error('[Admin] updateAdmin error', err);
+    return res.status(500).json({ error: 'server_error' });
+  }
+};
+
 exports.listWebhookLogs = async (req, res) => {
   try {
     const { limit = 100, skip = 0 } = req.query;

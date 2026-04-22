@@ -40,5 +40,7 @@ router.get('/users', adminController.listUsers);
 router.get('/user/:email', adminController.getUser);
 router.post('/simulate-webhook', adminController.simulateWebhook);
 router.get('/webhook-logs', adminController.listWebhookLogs);
+router.post('/delete-user', adminController.deleteUser);
+router.post('/update-admin', adminController.updateAdmin);
 
 module.exports = router;
