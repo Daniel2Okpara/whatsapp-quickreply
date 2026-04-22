@@ -1,41 +1,37 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
+const { protect } = require('../middleware/auth.middleware');
 
-// Simple admin protection using header x-admin-secret
-router.post('/cancel-subscription', (req, res, next) => {
+/**
+ * Admin Access Control
+ * All routes here require a valid JWT (checked by 'protect')
+ * AND the user must have 'isAdmin: true' in the database.
+ */
+const adminOnly = (req, res, next) => {
+  if (req.user && req.user.isAdmin) {
+    return next();
+  }
+  
+  // FALLBACK: Allow 'x-admin-secret' for legacy support or manual overrides
   const secret = process.env.ADMIN_SECRET;
   const header = req.headers['x-admin-secret'];
-  if (!secret || !header || header !== secret) return res.status(401).json({ error: 'unauthorized' });
-  next();
-}, adminController.cancelSubscription);
+  if (secret && header && header === secret) {
+    return next();
+  }
 
-router.get('/users', (req, res, next) => {
-  const secret = process.env.ADMIN_SECRET;
-  const header = req.headers['x-admin-secret'];
-  if (!secret || !header || header !== secret) return res.status(401).json({ error: 'unauthorized' });
-  next();
-}, adminController.listUsers);
+  return res.status(403).json({ error: 'forbidden: admin access required' });
+};
 
-router.get('/user/:email', (req, res, next) => {
-  const secret = process.env.ADMIN_SECRET;
-  const header = req.headers['x-admin-secret'];
-  if (!secret || !header || header !== secret) return res.status(401).json({ error: 'unauthorized' });
-  next();
-}, adminController.getUser);
+// Apply protection to all routes below
+router.use(protect);
+router.use(adminOnly);
 
-router.post('/simulate-webhook', (req, res, next) => {
-  const secret = process.env.ADMIN_SECRET;
-  const header = req.headers['x-admin-secret'];
-  if (!secret || !header || header !== secret) return res.status(401).json({ error: 'unauthorized' });
-  next();
-}, adminController.simulateWebhook);
-
-router.get('/webhook-logs', (req, res, next) => {
-  const secret = process.env.ADMIN_SECRET;
-  const header = req.headers['x-admin-secret'];
-  if (!secret || !header || header !== secret) return res.status(401).json({ error: 'unauthorized' });
-  next();
-}, adminController.listWebhookLogs);
+// Endpoints
+router.post('/cancel-subscription', adminController.cancelSubscription);
+router.get('/users', adminController.listUsers);
+router.get('/user/:email', adminController.getUser);
+router.post('/simulate-webhook', adminController.simulateWebhook);
+router.get('/webhook-logs', adminController.listWebhookLogs);
 
 module.exports = router;
