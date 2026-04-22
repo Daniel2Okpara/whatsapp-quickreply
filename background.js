@@ -28,14 +28,14 @@ async function fetchWithTimeout(url, options = {}, timeout = 20000) {
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
-  console.log('WA QuickReply extension installed');
+
 
   // V11.0: Wake up the server on install/startup
   fetch(`${BACKEND_URL}/health`).catch(() => {});
 
   // Clear any stored position data to prevent off-screen issues
   chrome.storage.local.remove(['fabPosition', 'panelPosition'], () => {
-    console.log('Cleared stored positions');
+
   });
 
   const existing = await storageGet(null);
@@ -55,7 +55,6 @@ function safeSendResponse(sendResponse, data) {
     if (sendResponse) sendResponse(data);
   } catch (e) {
     // ignore because context may be destroyed if extension is reloaded
-    console.warn('[WAQR] safeSendResponse failed:', e?.message || e);
   }
 }
 
@@ -156,7 +155,7 @@ async function generateAiReply(context, personality, sendResponse) {
       body = { transcript: context, personality, apiKey: data.apiKey || null };
     }
 
-    console.log('[WAQR] Sending AI request:', endpoint, '| mode:', mode);
+
 
     const headers = { 'Content-Type': 'application/json' };
     if (data.jwtToken) headers['Authorization'] = `Bearer ${data.jwtToken}`;
@@ -167,16 +166,15 @@ async function generateAiReply(context, personality, sendResponse) {
       body: JSON.stringify(body)
     }, 20000);
 
-    console.log('[WAQR] AI response status:', response.status);
+
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      console.error('[WAQR] AI error body:', error);
       throw new Error(error.error || error.message || `Server returned ${response.status}`);
     }
 
     const result = await response.json();
-    console.log('[WAQR] AI result:', result);
+
 
     if (subscription.tier === 'free') await incrementUsage('ai');
 
@@ -189,7 +187,6 @@ async function generateAiReply(context, personality, sendResponse) {
 
     sendResponse({ suggestion: suggestion || 'Could not generate a reply right now.' });
   } catch (error) {
-    console.error('[WAQR] AI Error:', error);
     sendResponse({ error: error.message });
   }
 }
@@ -210,7 +207,7 @@ async function improveMessage(text, sendResponse) {
     }
     */
     
-    console.log('[WAQR] Sending AI Improve request:', { textLength: text?.length, url: `${BACKEND_URL}/improve-message` });
+
 
     const headers = { 'Content-Type': 'application/json' };
     if (data.jwtToken) headers['Authorization'] = `Bearer ${data.jwtToken}`;
@@ -234,7 +231,6 @@ async function improveMessage(text, sendResponse) {
     const improvedText = result.improvedText || result.text || result.reply || result.suggestion || '';
     sendResponse({ improvedText });
   } catch (error) {
-    console.error('[WAQR] Improve Error:', error);
     sendResponse({ error: error.message });
   }
 }
@@ -272,7 +268,7 @@ chrome.action.onClicked.addListener((tab) => {
     // Send message to content script to toggle panel or show alert
     chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PANEL' }, (response) => {
       if (chrome.runtime.lastError) {
-        console.log('Content script not ready, will load automatically');
+
       }
     });
   }
@@ -310,11 +306,9 @@ async function refreshSubscription() {
           }
         }
       } catch (e) {
-        console.warn('[WAQR] fallback user-status failed', e?.message || e);
       }
     }
   } catch (e) {
-    console.warn('[WAQR] refreshSubscription failed', e?.message || e);
   }
 }
 

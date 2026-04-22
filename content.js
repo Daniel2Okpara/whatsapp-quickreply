@@ -16,7 +16,7 @@
   // ============================================================================
   function isContextValid() {
     if (!chrome.runtime?.id) {
-      console.warn('WA QuickReply: Extension context invalidated. Please refresh the page.');
+
       // Optionally show a subtle UI indicator
       return false;
     }
@@ -50,17 +50,14 @@
               applyProUI(); // re-apply Pro UI immediately
             });
           } catch (e) {
-            console.warn('SSE parse error', e);
           }
         });
         es.onerror = (err) => {
-          console.warn('SSE error', err);
           es.close();
           setTimeout(() => setupSSE(), 5000); // reconnect
         };
         window.addEventListener('unload', () => es.close());
       } catch (e) {
-        console.warn('SSE connect failed', e);
       }
     });
   })();
@@ -684,7 +681,6 @@
       // global flag for other modules
       window.WAQR_IS_PRO = true;
     } catch (e) {
-      console.warn('[WAQR] applyProUI failed', e?.message || e);
     }
   }
 
@@ -1637,12 +1633,12 @@
       }
     }
 
-    console.warn('[WAQR] 🔎 getCurrentChatName: No title found after deep-probing.');
+
     return null;
   }
 
   function getActiveChatMetadata() {
-     console.log('[WAQR] 🔍 Starting GLOBAL JID Hunter (V7.3)...');
+
      
      // 1. Gather ALL Candidate JIDs from the entire page
      const allElements = document.querySelectorAll('*');
@@ -1650,7 +1646,7 @@
      const viewportWidth = window.innerWidth;
      const viewportHeight = window.innerHeight;
 
-     console.log(`[WAQR] 📊 Scanning ${allElements.length} elements for JIDs...`);
+
 
      for (const el of allElements) {
         let rawId = null;
@@ -1693,19 +1689,17 @@
      }
 
      if (candidates.length === 0) {
-        console.error('[WAQR] ❌ JID Hunter found ZERO candidates on the entire page.');
+
         return { phone: null, chatName: getCurrentChatName(), type: 'none' };
      }
 
      // 2. Sort by Score (Primary) then Center-X (Secondary)
      candidates.sort((a, b) => b.score - a.score || b.centerX - a.centerX);
      
-     console.group(`[WAQR] 🏹 JID Hunter found ${candidates.length} candidates. Top Picks:`);
-     candidates.slice(0, 5).forEach((c, i) => console.log(`#${i+1}: Score=${c.score} ID=${c.id}`));
-     console.groupEnd();
+
 
      const bestPick = candidates[0].id;
-     console.log(`[WAQR] 🎯 JID Hunter selected: "${bestPick}"`);
+
      
      return parseChatId(bestPick);
   }
@@ -1738,11 +1732,7 @@
   function logAllTextboxes() {
     // Nuclear Debugging: Log every single textbox on the screen to help the developer identify the name
     const editables = document.querySelectorAll('[contenteditable="true"]');
-    console.group(`[WAQR] 📊 DOM Scanner: Found ${editables.length} textboxes.`);
-    editables.forEach((el, index) => {
-      console.log(`[WAQR] #${index}: id="${el.id}" label="${el.getAttribute('aria-label')}" testid="${el.getAttribute('data-testid')}" parent="${el.parentElement.className}"`);
-    });
-    console.groupEnd();
+
   }
 
   function clickSendButton() {
@@ -1769,9 +1759,8 @@
            showToast('✅ Message copied to clipboard!');
            return true;
         }
-     } catch (err) {
-        console.error('[WAQR] Copy fallback failed:', err);
-     }
+      } catch (err) {
+      }
      
      // Last resort modern API
      navigator.clipboard.writeText(text).then(() => {
@@ -1813,7 +1802,7 @@
     }
   }, 1000);
 
-  console.log('WA QuickReply loaded successfully');
+
   }
 
   // Check for email and load extension or show onboarding
