@@ -1,4 +1,31 @@
 const OpenAI = require('openai');
+const fs = require('fs');
+
+exports.transcribeAudio = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Audio file required' });
+    }
+
+    const effectiveApiKey = req.body.apiKey || process.env.OPENAI_API_KEY;
+    if (!effectiveApiKey) return res.status(500).json({ error: 'API Key missing' });
+
+    const openai = new OpenAI({ apiKey: effectiveApiKey });
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(req.file.path),
+      model: "whisper-1",
+    });
+
+    // Cleanup
+    fs.unlinkSync(req.file.path);
+
+    return res.json({ text: transcription.text });
+  } catch (err) {
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    console.error('Transcription Error:', err.message);
+    return res.status(500).json({ error: 'Transcription failed' });
+  }
+};
 
 exports.generateReplies = async (req, res) => {
   const { transcript, apiKey, personality, timeOfDay } = req.body;
