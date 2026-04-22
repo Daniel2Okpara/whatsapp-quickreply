@@ -97,7 +97,8 @@ exports.generateReplies = async (req, res) => {
 };
 
 exports.improveMessage = async (req, res) => {
-  const { text, apiKey } = req.body;
+  // Legacy compatibility: accept either { text } or { text, messages, styleExamples, tone, timeContext }
+  const { text, messages: convo = [], styleExamples, tone, timeContext, apiKey } = req.body;
 
   if (!text) {
     return res.status(400).json({ error: 'Text to improve is required.' });
@@ -120,37 +121,49 @@ exports.improveMessage = async (req, res) => {
   const openai = new OpenAI({ apiKey: effectiveApiKey });
 
   try {
-    const messages = [
-      {
-        role: 'system',
-        content: `You are a professional writing assistant. Improve the user's message to be clearer, more professional, and better articulated while keeping the exact same meaning.
-        
-        Rules:
-        - Maintain the user's intent.
-        - Fix grammar and flow.
-        - If the message is short/informal, make it slightly more polite but NOT overly formal unless necessary.
-        - Return ONLY the improved text. No explanations.`
-      },
-      {
-        role: 'user',
-        content: text
-      }
-    ];
+    // System prompt: behave as an editor that improves the provided draft using conversation context
+    const system = `You are an editor for WhatsApp messages. Your job is to IMPROVE the provided draft message written by ME (the owner of the account) while preserving the original intent.
+
+Rules:
+- Use the conversation context to adapt tone and content — do not invent new facts or change the intent.
+- Keep the message concise and natural for WhatsApp.
+- Match the sender's style when possible using provided examples.
+- Fix grammar, punctuation, and flow.
+- If the draft is informal, keep it informal but clearer.
+- Return ONLY the improved message text with no explanations or extra tokens.`;
+
+    const aiMessages = [ { role: 'system', content: system } ];
+
+    // Attach style examples and metadata (if provided)
+    if (styleExamples) aiMessages.push({ role: 'user', content: `Style examples:\n${styleExamples}` });
+    if (tone) aiMessages.push({ role: 'user', content: `Preferred tone: ${tone}` });
+    if (timeContext) aiMessages.push({ role: 'user', content: `Time of day: ${timeContext}` });
+
+    // Attach recent conversation context (if any) to help the editor adapt
+    if (Array.isArray(convo) && convo.length) {
+      aiMessages.push({ role: 'user', content: 'Conversation context (most recent last):' });
+      convo.slice(-10).forEach(m => {
+        const role = m.role === 'assistant' ? 'assistant' : 'user';
+        aiMessages.push({ role, content: m.content });
+      });
+    }
+
+    // Finally provide the draft that should be improved
+    aiMessages.push({ role: 'user', content: `IMPROVE THIS DRAFT (RETURN ONLY THE IMPROVED MESSAGE):\\n\\n${text}` });
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: messages,
-      temperature: 0.7,
+      messages: aiMessages,
+      temperature: 0.65,
       max_tokens: 300,
     });
 
-    const improvedText = completion.choices[0].message.content.trim();
-    
-    console.log(`[AI Controller]: Successfully improved message. Length: ${improvedText.length}`);
+    const improvedText = completion.choices?.[0]?.message?.content?.trim() || '';
+    console.log(`[AI Controller]: Improved message length ${improvedText.length}`);
     res.status(200).json({ improvedText });
 
   } catch (error) {
-    console.error('[AI Controller Improve Error]:', error.message);
+    console.error('[AI Controller Improve Error]:', error?.message || error);
     res.status(500).json({ error: 'Failed to improve message. Please try again.' });
   }
 };
@@ -257,9 +270,10 @@ The reply must feel like something I would naturally type myself.`;
 };
 
 // Compatibility endpoint: POST /ai-improve
+// Accepts: { text, messages, styleExamples, tone, timeContext, apiKey }
 exports.aiImprove = async (req, res) => {
   try {
-    const { text, tone, apiKey } = req.body;
+    const { text, messages: convo = [], styleExamples, tone, timeContext, apiKey } = req.body;
     if (!text) return res.status(400).json({ error: 'Text required' });
 
     const effectiveApiKey = apiKey || process.env.OPENAI_API_KEY;
@@ -267,13 +281,28 @@ exports.aiImprove = async (req, res) => {
 
     const openai = new OpenAI({ apiKey: effectiveApiKey });
 
-    const prompt = `Improve this WhatsApp message in a ${tone || 'clear and friendly'} tone:\n\n${text}`;
+    const system = `You are an editor for WhatsApp messages. Improve the provided draft message written by ME while preserving intent. Use the conversation context and style examples to adapt tone and phrasing. Do NOT invent facts or add new content beyond improving wording. Return ONLY the improved message text.`;
+
+    const aiMessages = [ { role: 'system', content: system } ];
+    if (styleExamples) aiMessages.push({ role: 'user', content: `Style examples:\n${styleExamples}` });
+    if (tone) aiMessages.push({ role: 'user', content: `Preferred tone: ${tone}` });
+    if (timeContext) aiMessages.push({ role: 'user', content: `Time of day: ${timeContext}` });
+
+    if (Array.isArray(convo) && convo.length) {
+      aiMessages.push({ role: 'user', content: 'Conversation context (most recent last):' });
+      convo.slice(-10).forEach(m => {
+        const role = m.role === 'assistant' ? 'assistant' : 'user';
+        aiMessages.push({ role, content: m.content });
+      });
+    }
+
+    aiMessages.push({ role: 'user', content: `IMPROVE THIS DRAFT (RETURN ONLY THE IMPROVED MESSAGE):\\n\\n${text}` });
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [ { role: 'user', content: prompt } ],
-      temperature: 0.7,
-      max_tokens: 250
+      messages: aiMessages,
+      temperature: 0.65,
+      max_tokens: 300
     });
 
     const improved = completion.choices?.[0]?.message?.content?.trim() || '';

@@ -6,12 +6,23 @@ exports.getUserStatus = async (req, res) => {
     if (!email) return res.status(400).json({ error: 'email_required' });
 
     const user = await User.findOne({ email });
-    if (!user) return res.json({ plan: 'free', status: 'inactive' });
+    if (!user) return res.json({ plan: 'free', status: 'inactive', trialEnd: null });
 
-    const plan = user.plan || (user.isPro ? 'pro' : 'free');
+    let plan = user.plan || (user.isPro ? 'pro' : 'free');
     const status = (user.subscriptionStatus === 'active') ? 'active' : 'inactive';
+    const trialEnd = user.trialEnd;
 
-    return res.json({ plan, status });
+    // Server-side trial expiry check
+    if (plan === 'trial' && trialEnd && new Date() > new Date(trialEnd)) {
+      plan = 'free';
+    }
+
+    return res.json({ 
+      plan, 
+      status, 
+      trialEnd,
+      totalCreditsUsed: user.creditsUsed || 0
+    });
   } catch (err) {
     console.error('[UserStatus] error', err);
     return res.status(500).json({ error: 'server_error' });

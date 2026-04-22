@@ -51,15 +51,17 @@ exports.processPaddlePayload = async (body, raw) => {
   }
 
   if (alertName.includes('subscription_created') || alertName.includes('subscription.created') || alertName === 'subscription.created') {
-    user.plan = 'pro';
+    user.plan = body.next_bill_date ? 'trial' : 'pro'; // If there's a next bill date but it's in the future and price is 0, it's a trial
     user.subscriptionId = subscriptionId;
     user.subscriptionStatus = 'active';
+    if (body.next_bill_date) user.trialEnd = new Date(body.next_bill_date);
   }
 
   if (alertName.includes('subscription_activated') || alertName.includes('subscription.activated')) {
-    user.plan = 'pro';
+    user.plan = body.next_bill_date ? 'trial' : 'pro';
     user.subscriptionStatus = 'active';
     user.subscriptionId = subscriptionId || user.subscriptionId;
+    if (body.next_bill_date) user.trialEnd = new Date(body.next_bill_date);
   }
 
   if (alertName.includes('subscription_cancelled') || alertName.includes('subscription.cancelled') || alertName === 'subscription.cancelled') {
