@@ -1337,6 +1337,17 @@
     
     if (bubbles.length > 0) {
       bubbles.forEach(bubble => {
+        // Detect Voice Notes first
+        const audioEl = bubble.querySelector('audio');
+        const isIn = bubble.className.includes('message-in');
+        const timeEl = bubble.querySelector('[data-testid="msg-meta"]') || bubble.querySelector('span[aria-label]');
+        const timestamp = timeEl ? timeEl.innerText.trim() : '';
+
+        if (audioEl && audioEl.src) {
+           results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out', timestamp });
+           return;
+        }
+
         // Find text block inside bubble
         const textEl = bubble.querySelector('.copyable-text span.selectable-text') || 
                        bubble.querySelector('.copyable-text') ||
@@ -1345,18 +1356,11 @@
                        
         if (!textEl || !textEl.innerText.trim()) return;
 
-        // Try getting timestamp if present
-        const timeEl = bubble.querySelector('[data-testid="msg-meta"]') || 
-                       bubble.querySelector('span[aria-label]');
-        const timestamp = timeEl ? timeEl.innerText.trim() : '';
-
-        const isIn = bubble.className.includes('message-in');
-        
         results.push({ text: textEl.innerText.trim(), direction: isIn ? 'in' : 'out', timestamp });
       });
     }
     
-    // Very barebones fallback
+    // Fallback logic remains as a safety net
     if (results.length === 0) {
        const main = document.querySelector('#main');
        if (main) {
@@ -1365,21 +1369,10 @@
            .filter(t => t.length > 1);
          
          allText.slice(-15).forEach(txt => {
-           results.push({ text: txt, direction: 'in', timestamp: '' }); // Assume in for AI context
+           results.push({ text: txt, direction: 'in', timestamp: '' });
          });
        }
-    }
-
-    if (results.length === 0) {
-       const spans = document.querySelectorAll('span[dir="ltr"]');
-       spans.forEach(span => {
-         const row = span.closest('[class*="message-"]');
-         if (row && span.innerText.trim()) {
-            const isIn = row.className.includes('message-in');
-            results.push({ text: span.innerText.trim(), direction: isIn ? 'in' : 'out', timestamp: '' });
-         }
-       });
-    }
+     }
 
     return results.slice(-15);
   }
@@ -1465,30 +1458,54 @@
   // 7. AI REPLY GENERATION
   // ============================================================================
 
-  shadow.getElementById('waqr-generate').addEventListener('click', () => {
-    const context    = getConversationContext();
+  shadow.getElementById('waqr-generate').addEventListener('click', async () => {
+    const rawContext = getLast15Messages();
     const timeOfDay  = getTimeOfDay();
 
-    if (!context || context.length < 1) {
+    if (!rawContext || rawContext.length < 1) {
       showToast('No recent chat messages found.');
       return;
     }
 
     const btn = shadow.getElementById('waqr-generate');
     btn.classList.add('generate');
-    btn.innerHTML = '⌛ Generating...';
+    btn.innerHTML = '⌛ Analyzing Voice/Text...';
     btn.disabled = true;
-
-    const messages = (context || []).map(m => ({ role: m.role, content: m.content }));
-    const lastMsg = messages[messages.length - 1];
-    const mode    = (lastMsg && lastMsg.role === 'assistant') ? 'follow_up' : 'reply';
 
     const suggestionsContainer = shadow.getElementById('waqr-suggestions');
     const typingEl = document.createElement('div');
     typingEl.className = 'waqr-typing';
-    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> ' + (mode === 'follow_up' ? 'Thinking...' : 'Generating...');
+    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Thinking...';
     suggestionsContainer.innerHTML = '';
     suggestionsContainer.appendChild(typingEl);
+
+    // Resolve Transcriptions for Voice Notes
+    const contextPromises = rawContext.map(async (m) => {
+      if (m.type === 'audio') {
+        try {
+          const resp = await fetch(m.src);
+          const blob = await resp.blob();
+          const base64 = await new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(blob);
+          });
+          
+          const transcription = await new Promise(resolve => {
+             chrome.runtime.sendMessage({ type: 'AI_TRANSCRIBE', audioBase64: base64 }, resolve);
+          });
+          
+          return { role: m.direction === 'in' ? 'user' : 'assistant', content: `[Voice Note: ${transcription.text || 'Transcription failed'}]` };
+        } catch (e) {
+          return { role: m.direction === 'in' ? 'user' : 'assistant', content: '[Voice Note: Unreadable]' };
+        }
+      }
+      return { role: m.direction === 'in' ? 'user' : 'assistant', content: (m.text || '').trim() };
+    });
+
+    const messages = await Promise.all(contextPromises);
+    const lastMsg = messages[messages.length - 1];
+    const mode    = (lastMsg && lastMsg.role === 'assistant') ? 'follow_up' : 'reply';
 
     chrome.storage.local.get(['waqrSettings'], (r) => {
       const s = r.waqrSettings || {};

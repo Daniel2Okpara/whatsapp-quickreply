@@ -69,6 +69,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     handleFeatureRequest('improve', request, sendResponse);
     return true; 
   }
+
+  if (request.type === 'AI_TRANSCRIBE') {
+    handleTranscription(request.audioBase64, sendResponse);
+    return true;
+  }
   
   if (request.type === 'GET_PLAN_STATE') {
     storageGet(['plan', 'usage', 'trialEnd']).then(data => {
@@ -79,6 +84,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   return false;
 });
+
+async function handleTranscription(base64, sendResponse) {
+  try {
+    const data = await storageGet(['jwtToken', 'apiKey']);
+    
+    // Convert base64 to Blob
+    const res = await fetch(`data:audio/ogg;base64,${base64}`);
+    const blob = await res.blob();
+    
+    const formData = new FormData();
+    formData.append('audio', blob, 'voice.ogg');
+    if (data.apiKey) formData.append('apiKey', data.apiKey);
+
+    const resp = await fetch(`${BACKEND_URL}/transcribe`, {
+      method: 'POST',
+      headers: { 'Authorization': data.jwtToken ? `Bearer ${data.jwtToken}` : '' },
+      body: formData
+    });
+
+    if (!resp.ok) throw new Error('Transcription failed');
+    const result = await resp.json();
+    sendResponse({ text: result.text });
+  } catch (err) {
+    console.error('Transcription Background Error:', err);
+    sendResponse({ error: err.message });
+  }
+}
 
 async function handleFeatureRequest(feature, request, sendResponse) {
   try {
