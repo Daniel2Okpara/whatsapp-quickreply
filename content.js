@@ -1331,18 +1331,23 @@
 
   function getLast15Messages() {
     const results = [];
-
-    // Core scrape strategy: Select the bubble wrappers explicitly
-    const bubbles = Array.from(document.querySelectorAll('div[class*="message-in"], div[class*="message-out"]'));
+    // More robust selectors for the modern WhatsApp Web DOM
+    const bubbles = Array.from(document.querySelectorAll('[data-testid="msg-container"]'));
     
     if (bubbles.length > 0) {
       bubbles.forEach(bubble => {
-        // Detect Voice Notes first
-        const audioEl = bubble.querySelector('audio');
-        const isIn = bubble.className.includes('message-in');
-        const timeEl = bubble.querySelector('[data-testid="msg-meta"]') || bubble.querySelector('span[aria-label]');
-        const timestamp = timeEl ? timeEl.innerText.trim() : '';
+        const msgIn = bubble.querySelector('[data-testid="msg-in"]');
+        const msgOut = bubble.querySelector('[data-testid="msg-out"]');
+        if (!msgIn && !msgOut) return;
 
+        const isIn = !!msgIn;
+        const timestampEl = bubble.querySelector('[data-testid="msg-meta"]') || 
+                            bubble.querySelector('span[aria-label]') ||
+                            bubble.querySelector('.copyable-text');
+        const timestamp = timestampEl ? timestampEl.innerText.trim() : '';
+
+        // Detect Voice Notes / Audio
+        const audioEl = bubble.querySelector('audio') || bubble.querySelector('[data-testid="audio-player"] audio');
         if (audioEl && audioEl.src) {
            results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out', timestamp });
            return;
@@ -1350,7 +1355,6 @@
 
         // Find text block inside bubble
         const textEl = bubble.querySelector('.copyable-text span.selectable-text') || 
-                       bubble.querySelector('.copyable-text') ||
                        bubble.querySelector('span.selectable-text') ||
                        bubble.querySelector('span[dir="ltr"]');
                        
@@ -1360,19 +1364,20 @@
       });
     }
     
-    // Fallback logic remains as a safety net
+    // Fallback logic
     if (results.length === 0) {
-       const main = document.querySelector('#main');
-       if (main) {
-         const allText = Array.from(main.querySelectorAll('span[dir="ltr"], div.copyable-text span'))
-           .map(node => node.textContent.trim())
-           .filter(t => t.length > 1);
-         
-         allText.slice(-15).forEach(txt => {
-           results.push({ text: txt, direction: 'in', timestamp: '' });
-         });
-       }
-     }
+       const legacyBubbles = Array.from(document.querySelectorAll('div[class*="message-in"], div[class*="message-out"]'));
+       legacyBubbles.forEach(bubble => {
+          const audioEl = bubble.querySelector('audio');
+          const isIn = bubble.className.includes('message-in');
+          if (audioEl && audioEl.src) {
+             results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out', timestamp: '' });
+          } else {
+             const txt = bubble.querySelector('span[dir="ltr"]');
+             if (txt) results.push({ text: txt.innerText.trim(), direction: isIn ? 'in' : 'out', timestamp: '' });
+          }
+       });
+    }
 
     return results.slice(-15);
   }
@@ -1483,20 +1488,23 @@
     const contextPromises = rawContext.map(async (m) => {
       if (m.type === 'audio') {
         try {
-          const resp = await fetch(m.src);
-          const blob = await resp.blob();
-          const base64 = await new Promise(resolve => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(blob);
+          // Use XHR for better blob access in content script origin
+          const arrayBuffer = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', m.src);
+            xhr.responseType = 'arraybuffer';
+            xhr.onload = () => resolve(xhr.response);
+            xhr.onerror = () => reject(new Error('XHR Failed'));
+            xhr.send();
           });
-          
+
           const transcription = await new Promise(resolve => {
-             chrome.runtime.sendMessage({ type: 'AI_TRANSCRIBE', audioBase64: base64 }, resolve);
+             chrome.runtime.sendMessage({ type: 'AI_TRANSCRIBE', audioBuffer: arrayBuffer }, resolve);
           });
           
-          return { role: m.direction === 'in' ? 'user' : 'assistant', content: `[Voice Note: ${transcription.text || 'Transcription failed'}]` };
+          return { role: m.direction === 'in' ? 'user' : 'assistant', content: `[Voice Note: ${transcription?.text || 'Transcription failed'}]` };
         } catch (e) {
+          console.error('Transcription Fetch Error:', e);
           return { role: m.direction === 'in' ? 'user' : 'assistant', content: '[Voice Note: Unreadable]' };
         }
       }

@@ -71,7 +71,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'AI_TRANSCRIBE') {
-    handleTranscription(request.audioBase64, sendResponse);
+    handleTranscription(request.audioBuffer, sendResponse);
     return true;
   }
   
@@ -85,13 +85,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
-async function handleTranscription(base64, sendResponse) {
+async function handleTranscription(arrayBuffer, sendResponse) {
   try {
     const data = await storageGet(['jwtToken', 'apiKey']);
     
-    // Convert base64 to Blob
-    const res = await fetch(`data:audio/ogg;base64,${base64}`);
-    const blob = await res.blob();
+    // Create Blob directly from ArrayBuffer
+    const blob = new Blob([arrayBuffer], { type: 'audio/ogg' });
     
     const formData = new FormData();
     formData.append('audio', blob, 'voice.ogg');
