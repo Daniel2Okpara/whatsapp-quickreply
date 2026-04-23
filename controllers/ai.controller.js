@@ -7,6 +7,16 @@ exports.transcribeAudio = async (req, res) => {
       return res.status(400).json({ error: 'Audio file required' });
     }
 
+    // 1b. Check User Limits (Free Tier = 15 calls)
+    if (req.user && !req.user.isPro) {
+      if (req.user.creditsUsed >= 15) {
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(403).json({ error: 'Monthly AI limit reached (15/15). Please upgrade to Professional.', limitReached: true });
+      }
+      req.user.creditsUsed += 1;
+      await req.user.save();
+    }
+
     const effectiveApiKey = req.body.apiKey || process.env.OPENAI_API_KEY;
     if (!effectiveApiKey) return res.status(500).json({ error: 'API Key missing' });
 
@@ -17,7 +27,7 @@ exports.transcribeAudio = async (req, res) => {
     });
 
     // Cleanup
-    fs.unlinkSync(req.file.path);
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
     return res.json({ text: transcription.text });
   } catch (err) {
@@ -28,7 +38,7 @@ exports.transcribeAudio = async (req, res) => {
 };
 
 exports.generateReplies = async (req, res) => {
-  const { transcript, apiKey, personality, timeOfDay } = req.body;
+  const { transcript: messages, voiceTranscript, apiKey, personality, timeOfDay } = req.body;
 
   // 1. Validation
   if (!transcript || !Array.isArray(transcript) || transcript.length === 0) {
@@ -198,9 +208,9 @@ Rules:
 // Compatibility endpoint: POST /ai-reply
 exports.aiReply = async (req, res) => {
   try {
-    const { messages, styleExamples, tone, timeContext, apiKey } = req.body;
+    const { messages, voiceTranscript, styleExamples, tone, timeContext, apiKey } = req.body;
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'Messages required' });
     }
 
@@ -208,6 +218,15 @@ exports.aiReply = async (req, res) => {
     if (!effectiveApiKey) return res.status(500).json({ error: 'AI service unavailable (Missing API Key)' });
 
     const openai = new OpenAI({ apiKey: effectiveApiKey });
+
+    // 1b. Check User Limits (Free Tier = 15 calls)
+    if (req.user && !req.user.isPro) {
+      if (req.user.creditsUsed >= 15) {
+        return res.status(403).json({ error: 'Monthly AI limit reached (15/15). Please upgrade to Professional.', limitReached: true });
+      }
+      req.user.creditsUsed += 1;
+      await req.user.save();
+    }
 
     const systemPrompt = `You are replying as the owner of this WhatsApp account.
 
@@ -218,67 +237,23 @@ IDENTITY RULES:
 - Messages labeled "assistant" are from ME.
 
 PRIMARY TASK:
-Generate a natural reply as ME based on the conversation.
+Generate a natural reply as ME based on the conversation and any provided voice transcript.
 
 CONTEXT RULES:
 - Read the full conversation carefully.
+- If a [VOICE TRANSCRIPT] is provided, it is the most recent message from the other person. PRIORITIZE replying to it.
 - Understand what the other person is saying.
-- Continue the conversation logically.
-- Do NOT repeat previous messages.
-- Do NOT ask unnecessary questions.
+- Match my writing style using the style examples provided.`;
 
-STYLE MIMICRY:
-- Match my writing style using the examples provided.
-- If I am short → be short.
-- If I am expressive → be expressive.
-- If I use emojis → use emojis naturally.
-- If I avoid emojis → do not force them.
-
-TONE ADAPTATION:
-- If tone is professional → be clear, polite, and structured.
-- If tone is casual → be relaxed and conversational.
-
-TIME AWARENESS:
-- Morning → light greeting if appropriate
-- Evening → relaxed tone
-- Late night → softer, minimal tone
-
-HUMAN-LIKE BEHAVIOR:
-- Avoid robotic phrases
-- Avoid overly formal language unless necessary
-- Avoid sounding like AI
-- Keep replies realistic and believable
-
-CONSTRAINTS:
-- Do NOT over-explain
-- Do NOT generate long paragraphs unless needed
-- Keep replies concise and natural
-
-GOAL:
-The reply must feel like something I would naturally type myself.`;
-
-    // Build messages for OpenAI following the master prompt structure
     const aiMessages = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Here are examples of how I usually reply:\n${styleExamples || ''}` },
-      { role: 'user', content: `Conversation tone: ${tone || 'casual'}` },
-      { role: 'user', content: `Time of day: ${timeContext || 'day'}` }
+      { role: 'user', content: `Style examples:\n${styleExamples || ''}` },
     ];
 
-    // If the last message in the conversation was sent by ME (role === 'assistant'),
-    // explicitly instruct the model to generate the *next* message I (the user) would send
-    // as a follow-up (instead of replying as the other person). This avoids cases
-    // where the model mistakenly replies as the other participant when continuing a
-    // conversation started by the user.
-    const lastMsg = Array.isArray(messages) && messages.length ? messages[messages.length - 1] : null;
-    if (lastMsg && lastMsg.role === 'assistant') {
-      aiMessages.push({
-        role: 'user',
-        content: 'Note: the most recent message(s) are from ME. Please generate the next message I would send to the other person as a follow-up. Do NOT reply as the other person.'
-      });
+    if (voiceTranscript) {
+       aiMessages.push({ role: 'user', content: `[VOICE TRANSCRIPT FROM OTHER PERSON]: "${voiceTranscript}"` });
     }
 
-    // Append the conversation messages after the instructions
     aiMessages.push(...messages);
 
     const completion = await openai.chat.completions.create({
