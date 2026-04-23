@@ -454,6 +454,40 @@
     .waqr-slider:before { position: absolute; content: ''; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
     .waqr-toggle input:checked + .waqr-slider { background: #27a55e; }
     .waqr-toggle input:checked + .waqr-slider:before { transform: translateX(20px); }
+    #waqr-panel.voice-mode {
+      border: 2px solid #a855f7;
+    }
+    #waqr-panel.voice-mode #waqr-header {
+      background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+    }
+
+    .waqr-transcript-box {
+      background: #fdf4ff;
+      border: 1px solid #f5d0fe;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #7e22ce;
+      position: relative;
+    }
+    .waqr-transcript-edit {
+      display: none; width: 100%; border: 1px solid #d8b4fe; 
+      border-radius: 6px; padding: 8px; font-size: 13px; 
+      margin-bottom: 10px; min-height: 80px;
+    }
+
+    .waqr-transcribe-btn-chat {
+      background: #a855f7; color: white; border: none; 
+      border-radius: 20px; padding: 4px 10px; font-size: 11px;
+      font-weight: 700; cursor: pointer; display: flex; 
+      align-items: center; gap: 4px; margin-top: 6px;
+      box-shadow: 0 2px 5px rgba(168, 85, 247, 0.3);
+      transition: all 0.2s;
+    }
+    .waqr-transcribe-btn-chat:hover { transform: scale(1.05); background: #9333ea; }
+    .waqr-transcribe-btn-chat.loading { background: #d1d5db; color: #4b5563; cursor: wait; }
   `;
   shadow.appendChild(styleEl);
 
@@ -539,6 +573,21 @@
           <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-ai-fill" style="width: 0%;"></div></div>
           <div id="waqr-trial-countdown" style="font-size:10px; color:#94a3b8; margin-top:6px; display:none;"></div>
         </div>
+
+        <!-- Voice Mode Overlay Section -->
+        <div id="waqr-voice-context" style="display:none; margin-bottom:16px; border-bottom:1px dashed #d8b4fe; padding-bottom:16px;">
+          <div style="font-size:12px; font-weight:700; color:#a855f7; margin-bottom:8px; display:flex; align-items:center; gap:5px;">
+             🎙 Voice Note Active
+             <button id="waqr-voice-clear" style="background:none; border:none; color:#dc2626; font-size:14px; margin-left:auto;">×</button>
+          </div>
+          <div id="waqr-transcript-display" class="waqr-transcript-box">Transcribing...</div>
+          <textarea id="waqr-transcript-edit" class="waqr-transcript-edit" placeholder="Edit transcript..."></textarea>
+          <div style="display:flex; gap:8px;">
+            <button id="waqr-voice-edit" class="waqr-btn secondary" style="margin-bottom:0; font-size:11px; padding:6px;">✍️ Edit Transcript</button>
+            <button id="waqr-voice-generate" class="waqr-btn" style="margin-bottom:0; font-size:11px; padding:6px; background:#a855f7;">✨ Generate Reply</button>
+          </div>
+        </div>
+
         <div style='font-size: 13px; color: #555; margin-bottom: 4px;'>Generate smart responses instantly</div>
         <div style='font-size: 11px; color: #94a3b8; margin-bottom: 12px;'>Tone &amp; style controlled in ⚙️ Settings</div>
         <button class='waqr-btn' id='waqr-generate'>✨ Generate AI Reply</button>
@@ -1965,6 +2014,160 @@
     }
   }, 1000);
 
+  // ============================================================================
+  // 10. VOICE NOTE COMPANION V1
+  // ============================================================================
+
+  let currentTranscription = '';
+
+  function injectTranscribeButtons() {
+    const audioPlayers = document.querySelectorAll('[data-testid="audio-player"]');
+    audioPlayers.forEach(player => {
+      const bubble = player.closest('[data-testid="msg-container"]');
+      if (!bubble || bubble.querySelector('.waqr-transcribe-btn-chat')) return;
+
+      const btn = document.createElement('button');
+      btn.className = 'waqr-transcribe-btn-chat';
+      btn.innerHTML = '🎙 Transcribe';
+      
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const audioEl = player.querySelector('audio');
+        if (!audioEl || !audioEl.src) {
+          showToast('⚠️ Audio source not found.');
+          return;
+        }
+
+        // UI Feedback
+        btn.innerHTML = '⌛ Processing...';
+        btn.classList.add('loading');
+        btn.disabled = true;
+
+        // Open Side Panel
+        panel.style.display = 'flex';
+        positionPanel();
+        showTab('ai');
+        
+        // Show Voice Mode
+        const voiceCtx = shadow.getElementById('waqr-voice-context');
+        voiceCtx.style.display = 'block';
+        panel.classList.add('voice-mode');
+        shadow.getElementById('waqr-transcript-display').textContent = 'Transcribing voice note...';
+        shadow.getElementById('waqr-transcript-edit').style.display = 'none';
+        shadow.getElementById('waqr-transcript-display').style.display = 'block';
+
+        try {
+          const buffer = await fetchAudioBuffer(audioEl.src);
+          chrome.runtime.sendMessage({ type: 'AI_TRANSCRIBE', audioBuffer: buffer }, (res) => {
+            btn.innerHTML = '🎙 Transcribed!';
+            btn.classList.remove('loading');
+            
+            if (res && res.text) {
+              currentTranscription = res.text;
+              shadow.getElementById('waqr-transcript-display').textContent = `📝 Transcript: "${res.text}"`;
+              shadow.getElementById('waqr-transcript-edit').value = res.text;
+              showToast('✅ Transcription ready!');
+            } else if (res && res.limitReached) {
+              showUpgradeModal(res.message);
+              voiceCtx.style.display = 'none';
+              panel.classList.remove('voice-mode');
+            } else {
+              throw new Error(res?.error || 'Transcription failed');
+            }
+          });
+        } catch (err) {
+          console.error('[Voice V1] Error:', err);
+          shadow.getElementById('waqr-transcript-display').textContent = '❌ Failed to transcribe. Please try again.';
+          btn.innerHTML = '🎙 Try Again';
+          btn.disabled = false;
+        }
+      };
+
+      // Find the meta info area or just append to bubble
+      const msgIn = bubble.querySelector('[data-testid="msg-in"]');
+      const msgOut = bubble.querySelector('[data-testid="msg-out"]');
+      const target = msgIn || msgOut;
+      if (target) {
+        target.appendChild(btn);
+      }
+    });
+  }
+
+  async function fetchAudioBuffer(url) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url);
+      xhr.responseType = 'arraybuffer';
+      xhr.onload = () => resolve(xhr.response);
+      xhr.onerror = () => reject(new Error('XHR Audio Load Failed'));
+      xhr.send();
+    });
+  }
+
+  // Voice UI Handlers
+  shadow.getElementById('waqr-voice-clear').onclick = () => {
+    shadow.getElementById('waqr-voice-context').style.display = 'none';
+    panel.classList.remove('voice-mode');
+    currentTranscription = '';
+  };
+
+  shadow.getElementById('waqr-voice-edit').onclick = () => {
+    const disp = shadow.getElementById('waqr-transcript-display');
+    const edt  = shadow.getElementById('waqr-transcript-edit');
+    const isEditing = edt.style.display === 'block';
+
+    if (isEditing) {
+      currentTranscription = edt.value;
+      disp.textContent = `📝 Transcript: "${edt.value}"`;
+      edt.style.display = 'none';
+      disp.style.display = 'block';
+      shadow.getElementById('waqr-voice-edit').innerHTML = '✍️ Edit Transcript';
+    } else {
+      edt.style.display = 'block';
+      disp.style.display = 'none';
+      shadow.getElementById('waqr-voice-edit').innerHTML = '💾 Save Changes';
+    }
+  };
+
+  shadow.getElementById('waqr-voice-generate').onclick = async () => {
+    if (!currentTranscription) return;
+    
+    const context = getLast15Messages();
+    const suggestionsContainer = shadow.getElementById('waqr-suggestions');
+    const typingEl = document.createElement('div');
+    typingEl.className = 'waqr-typing';
+    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Analyzing Context...';
+    suggestionsContainer.innerHTML = '';
+    suggestionsContainer.appendChild(typingEl);
+
+    chrome.storage.local.get(['waqrSettings'], (r) => {
+      const s = r.waqrSettings || {};
+      const payload = {
+        messages: context.map(m => ({ 
+          role: m.direction === 'in' ? 'user' : 'assistant', 
+          content: m.text || (m.type === 'audio' ? '[Voice Note]' : '') 
+        })),
+        voiceTranscript: currentTranscription, // Specifically pass the transcript
+        tone: s.tone || 'casual',
+        replyStyle: s.replyStyle || 'balanced',
+        emojiUsage: s.emojiUsage || 'natural',
+        mode: 'reply'
+      };
+
+      chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
+        if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
+        if (response && response.suggestion) {
+          displaySuggestions([response.suggestion]);
+          showToast('✅ Reply generated from voice!');
+        } else {
+          showToast('⚠️ Generation failed.');
+        }
+      });
+    });
+  };
+
+  // Continuous injection
+  setInterval(injectTranscribeButtons, 1500);
 
   }
 

@@ -71,7 +71,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'AI_TRANSCRIBE') {
-    handleTranscription(request.audioBuffer, sendResponse);
+    handleFeatureRequest('transcribe', request, sendResponse);
     return true;
   }
   
@@ -85,13 +85,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
-async function handleTranscription(arrayBuffer, sendResponse) {
+async function handleFeatureRequest(feature, request, sendResponse) {
+  try {
+    let data = await storageGet(['plan', 'usage', 'trialEnd', 'apiKey', 'jwtToken']);
+    data = resetUsageIfNeeded(data);
+
+    if (!canUseFeature(data, feature)) {
+      return safeSendResponse(sendResponse, { 
+        limitReached: true, 
+        feature,
+        message: `You've reached your daily limit for ${feature}. Please upgrade to continue.`
+      });
+    }
+
+    if (feature === 'aiReply') {
+      await generateAiReply(request.history, request.personality, (payload) => {
+        if (!payload.error) incrementUsage(feature);
+        safeSendResponse(sendResponse, payload);
+      });
+    } else if (feature === 'transcribe') {
+      await performTranscription(request.audioBuffer, (payload) => {
+        if (!payload.error) incrementUsage(feature);
+        safeSendResponse(sendResponse, payload || { error: 'Transcription Failed' });
+      });
+    } else {
+      await improveMessage(request.text, (payload) => {
+        if (!payload.error) incrementUsage(feature);
+        safeSendResponse(sendResponse, payload);
+      });
+    }
+  } catch (err) {
+    safeSendResponse(sendResponse, { error: err.message });
+  }
+}
+
+async function performTranscription(arrayBuffer, sendResponse) {
   try {
     const data = await storageGet(['jwtToken', 'apiKey']);
-    
-    // Create Blob directly from ArrayBuffer
     const blob = new Blob([arrayBuffer], { type: 'audio/ogg' });
-    
     const formData = new FormData();
     formData.append('audio', blob, 'voice.ogg');
     if (data.apiKey) formData.append('apiKey', data.apiKey);
@@ -102,7 +133,11 @@ async function handleTranscription(arrayBuffer, sendResponse) {
       body: formData
     });
 
-    if (!resp.ok) throw new Error('Transcription failed');
+    if (!resp.ok) {
+       const errBody = await resp.json().catch(() => ({}));
+       if (resp.status === 403) return sendResponse({ limitReached: true, message: errBody.error });
+       throw new Error('Transcription failed');
+    }
     const result = await resp.json();
     sendResponse({ text: result.text });
   } catch (err) {
@@ -143,10 +178,11 @@ async function handleFeatureRequest(feature, request, sendResponse) {
 function resetUsageIfNeeded(data) {
   const today = new Date().toISOString().split('T')[0];
   if (!data.usage) {
-    data.usage = { aiReply: 0, improve: 0, lastReset: today };
+    data.usage = { aiReply: 0, improve: 0, transcribe: 0, lastReset: today };
   } else if (data.usage.lastReset !== today) {
     data.usage.aiReply = 0;
     data.usage.improve = 0;
+    data.usage.transcribe = 0;
     data.usage.lastReset = today;
     storageSet({ usage: data.usage });
   }
@@ -168,9 +204,10 @@ function canUseFeature(data, feature) {
 
   // Free limits: 10 per day
   if (data.plan === 'free' || !data.plan) {
-    const usage = data.usage || { aiReply: 0, improve: 0 };
+    const usage = data.usage || { aiReply: 0, improve: 0, transcribe: 0 };
     if (feature === 'aiReply' && usage.aiReply >= 10) return false;
     if (feature === 'improve' && usage.improve >= 10) return false;
+    if (feature === 'transcribe' && usage.transcribe >= 10) return false;
   }
 
   return true;
@@ -178,9 +215,9 @@ function canUseFeature(data, feature) {
 
 async function incrementUsage(feature) {
   const data = await storageGet('usage');
-  const usage = data.usage || { aiReply: 0, improve: 0, lastReset: '' };
-  if (feature === 'aiReply') usage.aiReply++;
-  if (feature === 'improve') usage.improve++;
+  const usage = data.usage || { aiReply: 0, improve: 0, transcribe: 0, lastReset: '' };
+  if (usage[feature] !== undefined) usage[feature]++;
+  else usage[feature] = 1;
   await storageSet({ usage });
 }
 
@@ -223,7 +260,14 @@ async function generateAiReply(context, personality, sendResponse) {
     const response = await fetchWithTimeout(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': data.jwtToken ? `Bearer ${data.jwtToken}` : '' },
-      body: JSON.stringify({ messages: context.messages, tone: context.tone, apiKey: data.apiKey })
+      body: JSON.stringify({ 
+        messages: context.messages, 
+        voiceTranscript: context.voiceTranscript,
+        tone: context.tone, 
+        replyStyle: context.replyStyle,
+        emojiUsage: context.emojiUsage,
+        apiKey: data.apiKey 
+      })
     });
 
     if (!response.ok) throw new Error('AI failed');
