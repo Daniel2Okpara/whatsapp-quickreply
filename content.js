@@ -1213,13 +1213,40 @@
       s.classList.toggle('active', s.dataset.section === tabName);
     });
 
-    if (tabName === 'templates') loadTemplates();
-    if (panel.style.display === 'flex') positionPanel();
-  }
-
-  // ============================================================================
+    if (tabName === 'templates') loadTemplate  // ============================================================================
   // 5. TEMPLATES MANAGEMENT
   // ============================================================================
+
+  async function syncTemplatesToServer(templates) {
+    if (!isContextValid()) return;
+    chrome.storage.local.get(['jwtToken'], (res) => {
+      if (!res.jwtToken) return;
+      chrome.runtime.sendMessage({ 
+        type: 'SYNC_TEMPLATES', 
+        templates: templates.map(t => ({ id: t.id, text: t.message, category: t.category }))
+      });
+    });
+  }
+
+  function loadTemplatesFromCloud() {
+    chrome.runtime.sendMessage({ type: 'GET_TEMPLATES' }, (res) => {
+      if (res && res.templates) {
+        const mapped = res.templates.map(t => ({
+          id: t.id || Date.now().toString(),
+          name: t.text.length > 28 ? t.text.slice(0, 28).trim() + '…' : t.text,
+          message: t.text,
+          category: t.category || 'General',
+          usedCount: 0,
+          lastUsed: null
+        }));
+        if (mapped.length > 0) {
+          chrome.storage.local.set({ templates: mapped }, () => {
+            loadTemplates();
+          });
+        }
+      }
+    });
+  }
 
   function loadTemplates(category = 'All') {
     if (!isContextValid()) return;
@@ -1283,6 +1310,7 @@
           chrome.storage.local.set({ templates: filtered }, () => {
             loadTemplates(category);
             showToast('Template removed');
+            syncTemplatesToServer(filtered);
           });
         });
 
@@ -1352,6 +1380,7 @@
 
           loadTemplates(category);
           showToast('Template updated!');
+          syncTemplatesToServer(updated);
         });
       } else {
         templates.push({
@@ -1373,6 +1402,7 @@
 
           loadTemplates(category);
           showToast('Template added!');
+          syncTemplatesToServer(templates);
         });
       }
     });
@@ -1380,54 +1410,20 @@
 
   function getLast15Messages() {
     const results = [];
-    // More robust selectors for the modern WhatsApp Web DOM
     const bubbles = Array.from(document.querySelectorAll('[data-testid="msg-container"]'));
-    
-    if (bubbles.length > 0) {
-      bubbles.forEach(bubble => {
-        const msgIn = bubble.querySelector('[data-testid="msg-in"]');
-        const msgOut = bubble.querySelector('[data-testid="msg-out"]');
-        if (!msgIn && !msgOut) return;
-
-        const isIn = !!msgIn;
-        const timestampEl = bubble.querySelector('[data-testid="msg-meta"]') || 
-                            bubble.querySelector('span[aria-label]') ||
-                            bubble.querySelector('.copyable-text');
-        const timestamp = timestampEl ? timestampEl.innerText.trim() : '';
-
-        // Detect Voice Notes / Audio
-        const audioEl = bubble.querySelector('audio') || bubble.querySelector('[data-testid="audio-player"] audio');
-        if (audioEl && audioEl.src) {
-           results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out', timestamp });
-           return;
-        }
-
-        // Find text block inside bubble
-        const textEl = bubble.querySelector('.copyable-text span.selectable-text') || 
-                       bubble.querySelector('span.selectable-text') ||
-                       bubble.querySelector('span[dir="ltr"]');
-                       
-        if (!textEl || !textEl.innerText.trim()) return;
-
-        results.push({ text: textEl.innerText.trim(), direction: isIn ? 'in' : 'out', timestamp });
-      });
-    }
-    
-    // Fallback logic
-    if (results.length === 0) {
-       const legacyBubbles = Array.from(document.querySelectorAll('div[class*="message-in"], div[class*="message-out"]'));
-       legacyBubbles.forEach(bubble => {
-          const audioEl = bubble.querySelector('audio');
-          const isIn = bubble.className.includes('message-in');
-          if (audioEl && audioEl.src) {
-             results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out', timestamp: '' });
-          } else {
-             const txt = bubble.querySelector('span[dir="ltr"]');
-             if (txt) results.push({ text: txt.innerText.trim(), direction: isIn ? 'in' : 'out', timestamp: '' });
-          }
-       });
-    }
-
+    bubbles.forEach(bubble => {
+      const msgIn = bubble.querySelector('[data-testid="msg-in"]');
+      const msgOut = bubble.querySelector('[data-testid="msg-out"]');
+      if (!msgIn && !msgOut) return;
+      const isIn = !!msgIn;
+      const audioEl = bubble.querySelector('audio') || bubble.querySelector('[data-testid="audio-player"] audio');
+      if (audioEl && audioEl.src) {
+        results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out' });
+      } else {
+        const textEl = bubble.querySelector('.selectable-text span');
+        if (textEl) results.push({ text: textEl.innerText.trim(), direction: isIn ? 'in' : 'out' });
+      }
+    });
     return results.slice(-15);
   }
 
@@ -2014,16 +2010,23 @@
     }
   }, 1000);
 
-  // ============================================================================
-  // 10. VOICE NOTE COMPANION V1
-  // ============================================================================
-
   let currentTranscription = '';
 
+  async function fetchAudioBuffer(url) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url);
+      xhr.responseType = 'arraybuffer';
+      xhr.onload = () => resolve(xhr.response);
+      xhr.onerror = () => reject(new Error('XHR Audio Load Failed'));
+      xhr.send();
+    });
+  }
+
   function injectTranscribeButtons() {
-    const audioPlayers = document.querySelectorAll('[data-testid="audio-player"]');
+    const audioPlayers = document.querySelectorAll('[data-testid="audio-player"], [data-testid="ptt-button"], audio');
     audioPlayers.forEach(player => {
-      const bubble = player.closest('[data-testid="msg-container"]');
+      const bubble = player.closest('[data-testid="msg-container"]') || player.closest('.copyable-area') || player.closest('div[role="row"]');
       if (!bubble || bubble.querySelector('.waqr-transcribe-btn-chat')) return;
 
       const btn = document.createElement('button');
@@ -2032,23 +2035,20 @@
       
       btn.onclick = async (e) => {
         e.stopPropagation();
-        const audioEl = player.querySelector('audio');
+        const audioEl = player.tagName === 'AUDIO' ? player : player.querySelector('audio');
         if (!audioEl || !audioEl.src) {
           showToast('⚠️ Audio source not found.');
           return;
         }
 
-        // UI Feedback
         btn.innerHTML = '⌛ Processing...';
         btn.classList.add('loading');
         btn.disabled = true;
 
-        // Open Side Panel
         panel.style.display = 'flex';
         positionPanel();
-        showTab('ai');
+        switchTab('ai');
         
-        // Show Voice Mode
         const voiceCtx = shadow.getElementById('waqr-voice-context');
         voiceCtx.style.display = 'block';
         panel.classList.add('voice-mode');
@@ -2061,46 +2061,25 @@
           chrome.runtime.sendMessage({ type: 'AI_TRANSCRIBE', audioBuffer: buffer }, (res) => {
             btn.innerHTML = '🎙 Transcribed!';
             btn.classList.remove('loading');
-            
             if (res && res.text) {
               currentTranscription = res.text;
               shadow.getElementById('waqr-transcript-display').textContent = `📝 Transcript: "${res.text}"`;
               shadow.getElementById('waqr-transcript-edit').value = res.text;
               showToast('✅ Transcription ready!');
-            } else if (res && res.limitReached) {
-              showUpgradeModal(res.message);
-              voiceCtx.style.display = 'none';
-              panel.classList.remove('voice-mode');
+              syncPlanState();
             } else {
               throw new Error(res?.error || 'Transcription failed');
             }
           });
         } catch (err) {
-          console.error('[Voice V1] Error:', err);
-          shadow.getElementById('waqr-transcript-display').textContent = '❌ Failed to transcribe. Please try again.';
+          shadow.getElementById('waqr-transcript-display').textContent = '❌ Failed to transcribe.';
           btn.innerHTML = '🎙 Try Again';
           btn.disabled = false;
         }
       };
 
-      // Find the meta info area or just append to bubble
-      const msgIn = bubble.querySelector('[data-testid="msg-in"]');
-      const msgOut = bubble.querySelector('[data-testid="msg-out"]');
-      const target = msgIn || msgOut;
-      if (target) {
-        target.appendChild(btn);
-      }
-    });
-  }
-
-  async function fetchAudioBuffer(url) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', url);
-      xhr.responseType = 'arraybuffer';
-      xhr.onload = () => resolve(xhr.response);
-      xhr.onerror = () => reject(new Error('XHR Audio Load Failed'));
-      xhr.send();
+      const target = bubble.querySelector('[data-testid="msg-in"]') || bubble.querySelector('[data-testid="msg-out"]') || bubble;
+      if (target) target.appendChild(btn);
     });
   }
 
@@ -2131,7 +2110,6 @@
 
   shadow.getElementById('waqr-voice-generate').onclick = async () => {
     if (!currentTranscription) return;
-    
     const context = getLast15Messages();
     const suggestionsContainer = shadow.getElementById('waqr-suggestions');
     const typingEl = document.createElement('div');
@@ -2147,7 +2125,7 @@
           role: m.direction === 'in' ? 'user' : 'assistant', 
           content: m.text || (m.type === 'audio' ? '[Voice Note]' : '') 
         })),
-        voiceTranscript: currentTranscription, // Specifically pass the transcript
+        voiceTranscript: currentTranscription,
         tone: s.tone || 'casual',
         replyStyle: s.replyStyle || 'balanced',
         emojiUsage: s.emojiUsage || 'natural',
@@ -2169,7 +2147,14 @@
   // Continuous injection
   setInterval(injectTranscribeButtons, 1500);
 
+  function initializeExtension() {
+    loadTemplates();
+    loadTemplatesFromCloud(); // Recovery sync
+    updateFabPosition();
+    syncPlanState();
   }
+
+  initializeExtension();
 
   // Check for email and load extension or show onboarding
   chrome.storage.local.get(['email'], (res) => {
@@ -2206,13 +2191,6 @@
           display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
         }
         
-        .onboarding-logo {
-          width: 48px; height: 48px; border-radius: 12px;
-          background: linear-gradient(135deg, #27a55e 0%, #0f7a52 100%);
-          display: flex; align-items: center; justify-content: center;
-          font-weight: bold; color: white; font-size: 24px;
-        }
-        
         .onboarding-title {
           font-size: 18px; font-weight: 700; color: #0f172a;
         }
@@ -2234,8 +2212,6 @@
           outline: none; border-color: #27a55e; box-shadow: 0 0 0 3px rgba(39, 165, 94, 0.1);
         }
         
-        .onboarding-input::placeholder { color: #94a3b8; }
-        
         .onboarding-btn {
           width: 100%; padding: 12px 16px; font-size: 15px; font-weight: 600;
           background: linear-gradient(135deg, #27a55e 0%, #0f7a52 100%);
@@ -2243,9 +2219,6 @@
           cursor: pointer; transition: all 0.3s;
           box-shadow: 0 4px 12px rgba(39, 165, 94, 0.2);
         }
-        
-        .onboarding-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(39, 165, 94, 0.3); }
-        .onboarding-btn:active { transform: translateY(0); }
         
         .onboarding-error {
           color: #dc2626; font-size: 13px; margin-top: 8px; display: none;
@@ -2306,7 +2279,6 @@
 
       setTimeout(() => input.focus(), 100);
     } else {
-      // Email exists, load the full extension
       initializeExtension();
     }
   });

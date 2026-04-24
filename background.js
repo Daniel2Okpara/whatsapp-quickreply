@@ -82,8 +82,52 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.type === 'SYNC_TEMPLATES') {
+    syncTemplates(request.templates);
+    return true;
+  }
+
+  if (request.type === 'GET_TEMPLATES') {
+    getTemplates().then(sendResponse);
+    return true;
+  }
+
   return false;
 });
+
+async function syncTemplates(templates) {
+  try {
+    const data = await storageGet(['jwtToken']);
+    if (!data.jwtToken) return;
+
+    await fetch(`${BACKEND_URL}/auth/sync-templates`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${data.jwtToken}`
+      },
+      body: JSON.stringify({ templates })
+    });
+  } catch (err) {
+    console.error('Sync Templates Error:', err);
+  }
+}
+
+async function getTemplates() {
+  try {
+    const data = await storageGet(['jwtToken']);
+    if (!data.jwtToken) return { templates: [] };
+
+    const resp = await fetch(`${BACKEND_URL}/auth/get-templates`, {
+      headers: { 'Authorization': `Bearer ${data.jwtToken}` }
+    });
+    if (!resp.ok) return { templates: [] };
+    return await resp.json();
+  } catch (err) {
+    console.error('Get Templates Error:', err);
+    return { templates: [] };
+  }
+}
 
 async function handleFeatureRequest(feature, request, sendResponse) {
   try {
