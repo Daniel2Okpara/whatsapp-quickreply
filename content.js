@@ -1237,7 +1237,10 @@
       s.classList.toggle('active', s.dataset.section === tabName);
     });
 
-    if (tabName === 'templates') loadTemplate  // ============================================================================
+    if (tabName === 'templates') loadTemplates();
+  }
+
+  // ============================================================================
   // 5. TEMPLATES MANAGEMENT
   // ============================================================================
 
@@ -2310,5 +2313,4 @@
       initializeExtension();
     }
   });
-  }
 })();
