@@ -129,40 +129,6 @@ async function getTemplates() {
   }
 }
 
-async function handleFeatureRequest(feature, request, sendResponse) {
-  try {
-    let data = await storageGet(['plan', 'usage', 'trialEnd', 'apiKey', 'jwtToken']);
-    data = resetUsageIfNeeded(data);
-
-    if (!canUseFeature(data, feature)) {
-      return safeSendResponse(sendResponse, { 
-        limitReached: true, 
-        feature,
-        message: `You've reached your daily limit for ${feature}. Please upgrade to continue.`
-      });
-    }
-
-    if (feature === 'aiReply') {
-      await generateAiReply(request.history, request.personality, (payload) => {
-        if (!payload.error) incrementUsage(feature);
-        safeSendResponse(sendResponse, payload);
-      });
-    } else if (feature === 'transcribe') {
-      await performTranscription(request.audioBuffer, (payload) => {
-        if (!payload.error) incrementUsage(feature);
-        safeSendResponse(sendResponse, payload || { error: 'Transcription Failed' });
-      });
-    } else {
-      await improveMessage(request.text, (payload) => {
-        if (!payload.error) incrementUsage(feature);
-        safeSendResponse(sendResponse, payload);
-      });
-    }
-  } catch (err) {
-    safeSendResponse(sendResponse, { error: err.message });
-  }
-}
-
 async function performTranscription(arrayBuffer, sendResponse) {
   try {
     const data = await storageGet(['jwtToken', 'apiKey']);
@@ -199,7 +165,7 @@ async function handleFeatureRequest(feature, request, sendResponse) {
       return safeSendResponse(sendResponse, { 
         limitReached: true, 
         feature,
-        message: `You've reached your daily limit of 10 ${feature === 'aiReply' ? 'AI Replies' : 'Improve actions'}.`
+        message: `You've reached your daily limit for ${feature}. Please upgrade to continue.`
       });
     }
 
@@ -208,7 +174,12 @@ async function handleFeatureRequest(feature, request, sendResponse) {
         if (!payload.error) incrementUsage(feature);
         safeSendResponse(sendResponse, payload);
       });
-    } else {
+    } else if (feature === 'transcribe') {
+      await performTranscription(request.audioBuffer, (payload) => {
+        if (!payload.error) incrementUsage(feature);
+        safeSendResponse(sendResponse, payload || { error: 'Transcription Failed' });
+      });
+    } else if (feature === 'improve') {
       await improveMessage(request.text, (payload) => {
         if (!payload.error) incrementUsage(feature);
         safeSendResponse(sendResponse, payload);
