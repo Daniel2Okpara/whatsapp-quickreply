@@ -33,7 +33,7 @@
 
   // SSE: connect to backend for real-time subscription updates
   (function setupSSE() {
-    const BACKEND_URL = 'http://localhost:3000';
+    const BACKEND_URL = 'https://wa-quickreply-server.onrender.com';
     chrome.storage.local.get(['email'], (r) => {
       const email = r && r.email;
       if (!email) return;
@@ -2024,87 +2024,6 @@
   }, 1000);
 
   let currentTranscription = '';
-
-  async function fetchAudioBuffer(url) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', url);
-      xhr.responseType = 'arraybuffer';
-      xhr.onload = () => resolve(xhr.response);
-      xhr.onerror = () => reject(new Error('XHR Audio Load Failed'));
-      xhr.send();
-    });
-  }
-
-  function injectTranscribeButtons() {
-    const audioPlayers = document.querySelectorAll(
-      '[data-testid="audio-player"], ' +
-      '[data-testid="ptt-button"], ' +
-      'audio'
-    );
-    
-    audioPlayers.forEach(player => {
-      // Find the message container (msg-container, row, or generic div)
-      const bubble = player.closest('[data-testid="msg-container"]') || 
-                     player.closest('[role="row"]') || 
-                     player.closest('.message-in, .message-out') ||
-                     player.closest('div[role="row"]');
-                     
-      if (!bubble || bubble.querySelector('.waqr-transcribe-btn-chat')) return;
-
-      const btn = document.createElement('button');
-      btn.className = 'waqr-transcribe-btn-chat';
-      btn.innerHTML = '🎙 Transcribe';
-      
-      // Force distinct styling to ensure visibility
-      btn.style.cssText = `
-        display: inline-block !important;
-        background: #a855f7 !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 4px !important;
-        padding: 4px 8px !important;
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        cursor: pointer !important;
-        margin: 4px !important;
-        z-index: 10 !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-      `;
-      
-      btn.onclick = async (e) => {
-        e.stopPropagation();
-        const audioEl = player.tagName === 'AUDIO' ? player : player.querySelector('audio');
-        if (!audioEl || !audioEl.src) {
-          showToast('⚠️ Audio source not found.');
-          return;
-        }
-
-        btn.innerHTML = '⌛ Processing...';
-        btn.classList.add('loading');
-        btn.disabled = true;
-
-        panel.style.display = 'flex';
-        positionPanel();
-        switchTab('ai');
-        
-        const voiceCtx = shadow.getElementById('waqr-voice-context');
-        voiceCtx.style.display = 'block';
-        panel.classList.add('voice-mode');
-        shadow.getElementById('waqr-transcript-display').textContent = 'Transcribing voice note...';
-        shadow.getElementById('waqr-transcript-edit').style.display = 'none';
-        shadow.getElementById('waqr-transcript-display').style.display = 'block';
-
-        try {
-          const buffer = await fetchAudioBuffer(audioEl.src);
-          if (!isContextValid()) return;
-          chrome.runtime.sendMessage({ type: 'AI_TRANSCRIBE', audioBuffer: buffer }, (res) => {
-            if (!res) return;
-            btn.innerHTML = '🎙 Transcribed!';
-            btn.classList.remove('loading');
-            if (res && res.text) {
-    initializeExtension();
-  }
 
   function initializeExtension() {
     if (window_WAQR_LOADED) return;
