@@ -598,18 +598,14 @@
           <div id="waqr-trial-countdown" style="font-size:10px; color:#94a3b8; margin-top:6px; display:none;"></div>
         </div>
 
-        <!-- Voice Mode Overlay Section -->
-        <div id="waqr-voice-context" style="display:none; margin-bottom:16px; border-bottom:1px dashed #d8b4fe; padding-bottom:16px;">
-          <div style="font-size:12px; font-weight:700; color:#a855f7; margin-bottom:8px; display:flex; align-items:center; gap:5px;">
-             🎙 Voice Note Active
-             <button id="waqr-voice-clear" style="background:none; border:none; color:#dc2626; font-size:14px; margin-left:auto;">×</button>
+      <div class='waqr-section' data-section='ai'>
+        <div class="waqr-usage-container" id="waqr-usage-ai" style="display:none;">
+          <div class="waqr-usage-item">
+            <span>AI Replies Used</span>
+            <span class="waqr-usage-val"><span id="waqr-usage-ai-count">0</span>/10</span>
           </div>
-          <div id="waqr-transcript-display" class="waqr-transcript-box">Transcribing...</div>
-          <textarea id="waqr-transcript-edit" class="waqr-transcript-edit" placeholder="Edit transcript..."></textarea>
-          <div style="display:flex; gap:8px;">
-            <button id="waqr-voice-edit" class="waqr-btn secondary" style="margin-bottom:0; font-size:11px; padding:6px;">✍️ Edit Transcript</button>
-            <button id="waqr-voice-generate" class="waqr-btn" style="margin-bottom:0; font-size:11px; padding:6px; background:#a855f7;">✨ Generate Reply</button>
-          </div>
+          <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-ai-fill" style="width: 0%;"></div></div>
+          <div id="waqr-trial-countdown" style="font-size:10px; color:#94a3b8; margin-top:6px; display:none;"></div>
         </div>
 
         <div style='font-size: 13px; color: #555; margin-bottom: 4px;'>Generate smart responses instantly</div>
@@ -629,8 +625,8 @@
   settingsPanel.style.cssText = `
     display:none; position:fixed;
     background:white; border:1px solid #e2e8f0; border-radius:12px;
-    padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.18);
-    z-index:1000001; width:264px; max-height:82vh; overflow-y:auto;
+    padding:24px; box-shadow:0 12px 48px rgba(0,0,0,0.22);
+    z-index:1000001; width:380px; max-height:85vh; overflow-y:auto;
     pointer-events:auto;
   `;
   settingsPanel.innerHTML = `
@@ -1438,7 +1434,6 @@
 
   function getLast15Messages() {
     const results = [];
-    // Polymorphic selectors for the widest possible compatibility
     const bubbles = Array.from(document.querySelectorAll(
       '[data-testid="msg-container"], ' +
       '.message-in, .message-out, ' +
@@ -1447,40 +1442,37 @@
     ));
 
     bubbles.forEach(bubble => {
-      // Determine direction using multiple possible signals
+      // STRICT SENDER DETECTION
+      // msg-in/out are the golden standards for WhatsApp message ownership
       const msgIn = bubble.querySelector('[data-testid="msg-in"]') || bubble.classList.contains('message-in');
       const msgOut = bubble.querySelector('[data-testid="msg-out"]') || bubble.classList.contains('message-out');
       
-      if (!msgIn && !msgOut) return; // Skip non-message rows
+      if (!msgIn && !msgOut) return; 
       const isIn = !!msgIn;
       
-      // 1. Audio detection (Priority 1)
-      const audioEl = bubble.querySelector('audio') || bubble.querySelector('[data-testid="audio-player"] audio');
-      if (audioEl && audioEl.src) {
-        results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out' });
-      } 
-      // 2. Text detection (Priority 2)
-      else {
-        const textEl = bubble.querySelector('.selectable-text span') || 
-                       bubble.querySelector('[data-testid="message-text"]') ||
-                       bubble.querySelector('.copyable-text span') ||
-                       bubble.querySelector('div.copyable-text div[dir="ltr"]') ||
-                       bubble.querySelector('._ao3e');
+      const textEl = bubble.querySelector('.selectable-text span') || 
+                     bubble.querySelector('[data-testid="message-text"]') ||
+                     bubble.querySelector('.copyable-text span') ||
+                     bubble.querySelector('div.copyable-text div[dir="ltr"]') ||
+                     bubble.querySelector('._ao3e');
                        
-        if (textEl) {
-          const text = (textEl.innerText || textEl.textContent || '').trim();
-          if (text) {
-            results.push({ text, direction: isIn ? 'in' : 'out' });
-          }
+      if (textEl) {
+        const text = (textEl.innerText || textEl.textContent || '').trim();
+        if (text) {
+          results.push({ text, direction: isIn ? 'in' : 'out', role: isIn ? 'other' : 'user' });
         }
       }
     });
 
-    if (results.length === 0) {
-      console.warn('WAQR: No messages detected with current selectors. Bubbles found:', bubbles.length);
-    }
-    
     return results.slice(-15);
+  }
+
+  function getConversationContext() {
+    const rawHistory = getLast15Messages();
+    return rawHistory.map(m => ({
+      role: m.direction === 'in' ? 'other' : 'user',
+      text: m.text
+    }));
   }
 
   function getConversationContext() {
@@ -1567,7 +1559,6 @@
 
   shadow.getElementById('waqr-generate').addEventListener('click', async () => {
     const rawContext = getLast15Messages();
-    const timeOfDay  = getTimeOfDay();
 
     if (!rawContext || rawContext.length < 1) {
       showToast('No recent chat messages found.');
@@ -1576,64 +1567,41 @@
 
     const btn = shadow.getElementById('waqr-generate');
     btn.classList.add('generate');
-    btn.innerHTML = '⌛ Analyzing Voice/Text...';
+    btn.innerHTML = '⌛ Thinking...';
     btn.disabled = true;
 
     const suggestionsContainer = shadow.getElementById('waqr-suggestions');
     const typingEl = document.createElement('div');
     typingEl.className = 'waqr-typing';
-    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Thinking...';
+    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Analyzing...';
     suggestionsContainer.innerHTML = '';
     suggestionsContainer.appendChild(typingEl);
 
-    // Resolve Transcriptions for Voice Notes
-    const contextPromises = rawContext.map(async (m) => {
-      if (m.type === 'audio') {
-        try {
-          // Use XHR for better blob access in content script origin
-          const arrayBuffer = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', m.src);
-            xhr.responseType = 'arraybuffer';
-            xhr.onload = () => resolve(xhr.response);
-            xhr.onerror = () => reject(new Error('XHR Failed'));
-            xhr.send();
-          });
+    // Filter to build clean history
+    const history = rawContext.map(m => ({
+      role: m.role === 'user' ? 'assistant' : 'user', // "user" to AI means the person we talk to
+      content: m.text
+    }));
 
-          const transcription = await new Promise(resolve => {
-             chrome.runtime.sendMessage({ type: 'AI_TRANSCRIBE', audioBuffer: arrayBuffer }, resolve);
-          });
-          
-          return { role: m.direction === 'in' ? 'user' : 'assistant', content: `[Voice Note: ${transcription?.text || 'Transcription failed'}]` };
-        } catch (e) {
-          console.error('Transcription Fetch Error:', e);
-          return { role: m.direction === 'in' ? 'user' : 'assistant', content: '[Voice Note: Unreadable]' };
-        }
-      }
-      return { role: m.direction === 'in' ? 'user' : 'assistant', content: (m.text || '').trim() };
-    });
-
-    const messages = await Promise.all(contextPromises);
-    const lastMsg = messages[messages.length - 1];
-    const mode    = (lastMsg && lastMsg.role === 'assistant') ? 'follow_up' : 'reply';
+    // SENDER DETECTION FAILSAFE
+    const lastMsg = rawContext[rawContext.length - 1];
+    if (lastMsg && lastMsg.direction === 'out') {
+      showToast('AI: Waiting for a reply from the other person.');
+      btn.classList.remove('generate');
+      btn.innerHTML = '✨ Generate AI Reply';
+      btn.disabled = false;
+      typingEl.remove();
+      return;
+    }
 
     chrome.storage.local.get(['waqrSettings'], (r) => {
       const s = r.waqrSettings || {};
-      const styleLearning  = s.styleLearning !== 'off';
-      const myMessages     = messages.filter(m => m.role === 'assistant').map(m => m.content || '');
-      const styleExamples  = styleLearning ? myMessages.slice(-10).join('\n') : '';
-      const detectedTone   = detectTone(messages.map(m => m.content || ''));
-      const timeContext    = getTimeContext() || timeOfDay;
-
       const payload = {
-        messages,
-        styleExamples,
-        tone:             s.tone       || detectedTone || 'casual',
-        timeContext,
-        mode,
-        replyStyle:       s.replyStyle || 'balanced',
-        emojiUsage:       s.emojiUsage || 'natural',
-        followUpEnabled:  s.followUp   !== 'disabled'
+        messages: history,
+        tone: s.tone || 'casual',
+        replyStyle: s.replyStyle || 'balanced',
+        emojiUsage: s.emojiUsage || 'natural',
+        mode: 'reply'
       };
 
       chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
@@ -1642,24 +1610,12 @@
         btn.disabled = false;
         if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
 
-        if (response && response.limitReached) {
-          showUpgradeModal(response.message);
-          syncPlanState();
-          return;
-        }
-
-        if (response && response.noReply) {
-          suggestionsContainer.innerHTML = '<div style="font-size:13px;color:#888;text-align:center;padding:16px 8px;">💤 No follow-up needed right now</div>';
-        } else if (response && response.error) {
-          showToast('⚠️ ' + response.error);
-          suggestionsContainer.innerHTML = `<div style="font-size:13px;color:#777">${response.error}</div>`;
-        } else if (response && response.suggestion) {
+        if (response && response.suggestion) {
           displaySuggestions([response.suggestion]);
-          showToast(mode === 'follow_up' ? '✅ Follow-up ready!' : '✅ Reply ready!');
+          showToast('✅ Reply ready!');
           syncPlanState();
         } else {
-          showToast('AI could not create a reply right now.');
-          suggestionsContainer.innerHTML = '<div style="font-size:13px;color:#777">AI did not return a suggestion.</div>';
+          showToast('⚠️ ' + (response?.error || 'Generation failed.'));
         }
       });
     });
@@ -2147,32 +2103,8 @@
             btn.innerHTML = '🎙 Transcribed!';
             btn.classList.remove('loading');
             if (res && res.text) {
-              currentTranscription = res.text;
-              shadow.getElementById('waqr-transcript-display').textContent = `📝 Transcript: "${res.text}"`;
-              shadow.getElementById('waqr-transcript-edit').value = res.text;
-              showToast('✅ Transcription ready!');
-              syncPlanState();
-            } else {
-              throw new Error(res?.error || 'Transcription failed');
-            }
-          });
-        } catch (err) {
-          shadow.getElementById('waqr-transcript-display').textContent = '❌ Failed to transcribe.';
-          btn.innerHTML = '🎙 Try Again';
-          btn.disabled = false;
-        }
-      };
-
-      // Primary insertion point: msg-in or msg-out content
-      const target = bubble.querySelector('[data-testid="msg-in"] > div') || 
-                     bubble.querySelector('[data-testid="msg-out"] > div') || 
-                     bubble.querySelector('.copyable-text') ||
-                     bubble;
-                     
-      if (target) target.appendChild(btn);
-    });
+    initializeExtension();
   }
-
 
   function initializeExtension() {
     if (window_WAQR_LOADED) return;
@@ -2182,73 +2114,6 @@
     loadTemplatesFromCloud();
     updateFabPosition();
     syncPlanState();
-
-    // Attach Voice UI Handlers
-    const voiceClear = shadow.getElementById('waqr-voice-clear');
-    if (voiceClear) voiceClear.onclick = () => {
-      shadow.getElementById('waqr-voice-context').style.display = 'none';
-      panel.classList.remove('voice-mode');
-      currentTranscription = '';
-    };
-
-    const voiceEdit = shadow.getElementById('waqr-voice-edit');
-    if (voiceEdit) voiceEdit.onclick = () => {
-      const disp = shadow.getElementById('waqr-transcript-display');
-      const edt  = shadow.getElementById('waqr-transcript-edit');
-      const isEditing = edt.style.display === 'block';
-      if (isEditing) {
-        currentTranscription = edt.value;
-        disp.textContent = `📝 Transcript: "${edt.value}"`;
-        edt.style.display = 'none';
-        disp.style.display = 'block';
-        voiceEdit.innerHTML = '✍️ Edit Transcript';
-      } else {
-        edt.style.display = 'block';
-        disp.style.display = 'none';
-        voiceEdit.innerHTML = '💾 Save Changes';
-      }
-    };
-
-    const voiceGen = shadow.getElementById('waqr-voice-generate');
-    if (voiceGen) voiceGen.onclick = async () => {
-      if (!currentTranscription) return;
-      const context = getLast15Messages();
-      const suggestionsContainer = shadow.getElementById('waqr-suggestions');
-      const typingEl = document.createElement('div');
-      typingEl.className = 'waqr-typing';
-      typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Analyzing Context...';
-      suggestionsContainer.innerHTML = '';
-      suggestionsContainer.appendChild(typingEl);
-
-      chrome.storage.local.get(['waqrSettings'], (r) => {
-        const s = r.waqrSettings || {};
-        const payload = {
-          messages: context.map(m => ({ 
-            role: m.direction === 'in' ? 'user' : 'assistant', 
-            content: m.text || (m.type === 'audio' ? '[Voice Note]' : '') 
-          })),
-          voiceTranscript: currentTranscription,
-          tone: s.tone || 'casual',
-          replyStyle: s.replyStyle || 'balanced',
-          emojiUsage: s.emojiUsage || 'natural',
-          mode: 'reply'
-        };
-
-        if (!isContextValid()) return;
-        chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
-          if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
-          if (response && response.suggestion) {
-            displaySuggestions([response.suggestion]);
-            showToast('✅ Reply generated from voice!');
-          } else {
-            showToast('⚠️ Generation failed.');
-          }
-        });
-      });
-    };
-
-    // Continuous injection
-    setInterval(injectTranscribeButtons, 1500);
   }
 
   // Check for email and load extension or show onboarding
