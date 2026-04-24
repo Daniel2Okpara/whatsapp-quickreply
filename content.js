@@ -6,10 +6,7 @@
 (function() {
   'use strict';
 
-  function initializeExtension() {
-    // Prevent double injection
-    if (window.WAQR_LOADED) return;
-    window.WAQR_LOADED = true;
+  let window_WAQR_LOADED = false;
 
   // ============================================================================
   // 0. STABILITY & CONTEXT CHECK
@@ -98,6 +95,33 @@
                                                                                                                                                                                                      
     button { cursor: pointer; transition: all 0.2s ease; }
     button:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    .waqr-transcribe-btn-chat {
+      background: #a855f7;
+      color: white;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+      box-shadow: 0 2px 5px rgba(168, 85, 247, 0.3);
+      pointer-events: auto;
+      z-index: 100;
+    }
+    .waqr-transcribe-btn-chat:hover {
+      background: #9333ea;
+      transform: scale(1.02);
+    }
+    .waqr-transcribe-btn-chat.loading {
+      opacity: 0.7;
+      cursor: wait;
+    }
 
     #waqr-fab {
       position: fixed;
@@ -2083,78 +2107,82 @@
     });
   }
 
-  // Voice UI Handlers
-  shadow.getElementById('waqr-voice-clear').onclick = () => {
-    shadow.getElementById('waqr-voice-context').style.display = 'none';
-    panel.classList.remove('voice-mode');
-    currentTranscription = '';
-  };
-
-  shadow.getElementById('waqr-voice-edit').onclick = () => {
-    const disp = shadow.getElementById('waqr-transcript-display');
-    const edt  = shadow.getElementById('waqr-transcript-edit');
-    const isEditing = edt.style.display === 'block';
-
-    if (isEditing) {
-      currentTranscription = edt.value;
-      disp.textContent = `📝 Transcript: "${edt.value}"`;
-      edt.style.display = 'none';
-      disp.style.display = 'block';
-      shadow.getElementById('waqr-voice-edit').innerHTML = '✍️ Edit Transcript';
-    } else {
-      edt.style.display = 'block';
-      disp.style.display = 'none';
-      shadow.getElementById('waqr-voice-edit').innerHTML = '💾 Save Changes';
-    }
-  };
-
-  shadow.getElementById('waqr-voice-generate').onclick = async () => {
-    if (!currentTranscription) return;
-    const context = getLast15Messages();
-    const suggestionsContainer = shadow.getElementById('waqr-suggestions');
-    const typingEl = document.createElement('div');
-    typingEl.className = 'waqr-typing';
-    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Analyzing Context...';
-    suggestionsContainer.innerHTML = '';
-    suggestionsContainer.appendChild(typingEl);
-
-    chrome.storage.local.get(['waqrSettings'], (r) => {
-      const s = r.waqrSettings || {};
-      const payload = {
-        messages: context.map(m => ({ 
-          role: m.direction === 'in' ? 'user' : 'assistant', 
-          content: m.text || (m.type === 'audio' ? '[Voice Note]' : '') 
-        })),
-        voiceTranscript: currentTranscription,
-        tone: s.tone || 'casual',
-        replyStyle: s.replyStyle || 'balanced',
-        emojiUsage: s.emojiUsage || 'natural',
-        mode: 'reply'
-      };
-
-      chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
-        if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
-        if (response && response.suggestion) {
-          displaySuggestions([response.suggestion]);
-          showToast('✅ Reply generated from voice!');
-        } else {
-          showToast('⚠️ Generation failed.');
-        }
-      });
-    });
-  };
-
-  // Continuous injection
-  setInterval(injectTranscribeButtons, 1500);
 
   function initializeExtension() {
+    if (window_WAQR_LOADED) return;
+    window_WAQR_LOADED = true;
+
     loadTemplates();
-    loadTemplatesFromCloud(); // Recovery sync
+    loadTemplatesFromCloud();
     updateFabPosition();
     syncPlanState();
-  }
 
-  initializeExtension();
+    // Attach Voice UI Handlers
+    const voiceClear = shadow.getElementById('waqr-voice-clear');
+    if (voiceClear) voiceClear.onclick = () => {
+      shadow.getElementById('waqr-voice-context').style.display = 'none';
+      panel.classList.remove('voice-mode');
+      currentTranscription = '';
+    };
+
+    const voiceEdit = shadow.getElementById('waqr-voice-edit');
+    if (voiceEdit) voiceEdit.onclick = () => {
+      const disp = shadow.getElementById('waqr-transcript-display');
+      const edt  = shadow.getElementById('waqr-transcript-edit');
+      const isEditing = edt.style.display === 'block';
+      if (isEditing) {
+        currentTranscription = edt.value;
+        disp.textContent = `📝 Transcript: "${edt.value}"`;
+        edt.style.display = 'none';
+        disp.style.display = 'block';
+        voiceEdit.innerHTML = '✍️ Edit Transcript';
+      } else {
+        edt.style.display = 'block';
+        disp.style.display = 'none';
+        voiceEdit.innerHTML = '💾 Save Changes';
+      }
+    };
+
+    const voiceGen = shadow.getElementById('waqr-voice-generate');
+    if (voiceGen) voiceGen.onclick = async () => {
+      if (!currentTranscription) return;
+      const context = getLast15Messages();
+      const suggestionsContainer = shadow.getElementById('waqr-suggestions');
+      const typingEl = document.createElement('div');
+      typingEl.className = 'waqr-typing';
+      typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Analyzing Context...';
+      suggestionsContainer.innerHTML = '';
+      suggestionsContainer.appendChild(typingEl);
+
+      chrome.storage.local.get(['waqrSettings'], (r) => {
+        const s = r.waqrSettings || {};
+        const payload = {
+          messages: context.map(m => ({ 
+            role: m.direction === 'in' ? 'user' : 'assistant', 
+            content: m.text || (m.type === 'audio' ? '[Voice Note]' : '') 
+          })),
+          voiceTranscript: currentTranscription,
+          tone: s.tone || 'casual',
+          replyStyle: s.replyStyle || 'balanced',
+          emojiUsage: s.emojiUsage || 'natural',
+          mode: 'reply'
+        };
+
+        chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
+          if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
+          if (response && response.suggestion) {
+            displaySuggestions([response.suggestion]);
+            showToast('✅ Reply generated from voice!');
+          } else {
+            showToast('⚠️ Generation failed.');
+          }
+        });
+      });
+    };
+
+    // Continuous injection
+    setInterval(injectTranscribeButtons, 1500);
+  }
 
   // Check for email and load extension or show onboarding
   chrome.storage.local.get(['email'], (res) => {
@@ -2282,4 +2310,5 @@
       initializeExtension();
     }
   });
+  }
 })();
