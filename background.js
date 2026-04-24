@@ -157,10 +157,17 @@ async function handleFeatureRequest(feature, request, sendResponse) {
 function resetUsageIfNeeded(data) {
   const today = new Date().toISOString().split('T')[0];
   if (!data.usage) {
-    data.usage = { aiReply: 0, improve: 0, lastReset: today };
+    data.usage = { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, lastReset: today };
   } else if (data.usage.lastReset !== today) {
+    data.usage.free_aiReply = 0;
+    data.usage.free_improve = 0;
+    data.usage.pro_aiReply = 0;
+    data.usage.pro_improve = 0;
+    
+    // Legacy fallback resets
     data.usage.aiReply = 0;
     data.usage.improve = 0;
+
     data.usage.lastReset = today;
     storageSet({ usage: data.usage });
   }
@@ -168,12 +175,12 @@ function resetUsageIfNeeded(data) {
 }
 
 function canUseFeature(data, feature) {
-  const usage = data.usage || { aiReply: 0, improve: 0, transcribe: 0 };
-  const totalActions = (usage.aiReply || 0) + (usage.improve || 0);
-
+  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0 };
+  
   // Pro limits: 200 combined actions per day
   if (data.plan === 'pro') {
-    if (totalActions >= 200) return false;
+    const totalProActions = (usage.pro_aiReply || 0) + (usage.pro_improve || 0);
+    if (totalProActions >= 200) return false;
     return true;
   }
 
@@ -188,18 +195,25 @@ function canUseFeature(data, feature) {
 
   // Free limits: 10 per day per feature
   if (data.plan === 'free' || !data.plan) {
-    if (feature === 'aiReply' && usage.aiReply >= 10) return false;
-    if (feature === 'improve' && usage.improve >= 10) return false;
+    const freeKey = `free_${feature}`;
+    // Fallback for legacy keys if newly downgraded
+    const currentFreeUsage = (usage[freeKey] || 0) + (usage[feature] && !usage.pro_aiReply ? usage[feature] : 0);
+    if (currentFreeUsage >= 10) return false;
   }
 
   return true;
 }
 
 async function incrementUsage(feature) {
-  const data = await storageGet('usage');
-  const usage = data.usage || { aiReply: 0, improve: 0, lastReset: '' };
-  if (usage[feature] !== undefined) usage[feature]++;
-  else usage[feature] = 1;
+  const data = await storageGet(['usage', 'plan']);
+  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, lastReset: '' };
+  
+  const planPrefix = data.plan === 'pro' ? 'pro_' : 'free_';
+  const planKey = `${planPrefix}${feature}`;
+
+  if (usage[planKey] !== undefined) usage[planKey]++;
+  else usage[planKey] = 1;
+  
   await storageSet({ usage });
 }
 

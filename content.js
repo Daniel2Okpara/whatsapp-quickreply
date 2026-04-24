@@ -1558,8 +1558,8 @@
       shadow.getElementById('waqr-usage-templates').style.display = 'block';
       shadow.getElementById('waqr-usage-ai').style.display = 'block';
       
-      const aiCount = usage?.aiReply || 0;
-      const improveCount = usage?.improve || 0;
+      const aiCount = (usage?.free_aiReply || 0) + (usage?.aiReply && !usage?.pro_aiReply ? usage.aiReply : 0);
+      const improveCount = (usage?.free_improve || 0) + (usage?.improve && !usage?.pro_improve ? usage.improve : 0);
 
       shadow.getElementById('waqr-usage-ai-count').textContent = aiCount;
       shadow.getElementById('waqr-usage-ai-fill').style.width = (aiCount * 10) + '%';
