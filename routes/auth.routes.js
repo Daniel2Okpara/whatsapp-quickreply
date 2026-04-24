@@ -12,4 +12,8 @@ router.get('/profile', protect, getProfile);
 router.post('/handshake/create', handshakeController.createHandshake);
 router.get('/handshake/:token', handshakeController.consumeHandshake);
 
+// Template Sync Endpoints
+router.post('/sync-templates', protect, require('../controllers/auth.controller').syncTemplates);
+router.get('/get-templates', protect, require('../controllers/auth.controller').getTemplates);
+
 module.exports = router;

@@ -65,3 +65,27 @@ exports.getProfile = async (req, res) => {
     res.status(500).json({ error: 'Server error fetching profile' });
   }
 };
+
+exports.syncTemplates = async (req, res) => {
+  try {
+    const { templates } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    user.templates = templates;
+    await user.save();
+    res.json({ message: 'Templates synced', templates: user.templates });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to sync templates' });
+  }
+};
+
+exports.getTemplates = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ templates: user.templates || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch templates' });
+  }
+};

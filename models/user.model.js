@@ -43,6 +43,14 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  templates: [
+    {
+      _id: { type: String },
+      text: { type: String, required: true },
+      category: { type: String, default: 'General' },
+      createdAt: { type: Date, default: Date.now }
+    }
+  ],
   createdAt: {
     type: Date,
     default: Date.now
