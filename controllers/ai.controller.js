@@ -38,11 +38,12 @@ exports.transcribeAudio = async (req, res) => {
 };
 
 exports.generateReplies = async (req, res) => {
-  const { transcript: messages, voiceTranscript, apiKey, personality, timeOfDay } = req.body;
+  const { transcript, messages: incomingMessages, voiceTranscript, apiKey, personality, timeOfDay, styleProfile, tone, replyStyle, emojiUsage, mode } = req.body;
+  const historyArray = transcript || incomingMessages;
 
   // 1. Validation
-  if (!transcript || !Array.isArray(transcript) || transcript.length === 0) {
-    return res.status(400).json({ error: 'Transcript history is required.' });
+  if (!historyArray || !Array.isArray(historyArray) || historyArray.length === 0) {
+    return res.status(400).json({ error: 'Chat history is required.' });
   }
 
   const effectiveApiKey = apiKey || process.env.OPENAI_API_KEY;
@@ -95,9 +96,12 @@ exports.generateReplies = async (req, res) => {
         ${styleRule}
         
         TASK:
-        Generate ONE (1) natural response. If the last message was from the user, suggest a proactive follow-up or a helpful clarification.`
+        ${mode === 'follow_up' 
+          ? 'The user of this account sent the last message and has not received a reply. Your task is to generate ONE (1) natural, non-pushy follow-up or check-in message.' 
+          : 'Generate ONE (1) natural, conversational response to the last message from the other person.'}
+        `
       },
-      ...transcript.map(msg => ({
+      ...historyArray.map(msg => ({
         role: msg.role === 'assistant' ? 'assistant' : 'user',
         content: msg.content
       }))
