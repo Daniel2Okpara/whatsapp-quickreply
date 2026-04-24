@@ -1103,7 +1103,23 @@
         }
      }, 15000);
 
-     chrome.runtime.sendMessage({ type: 'AI_IMPROVE', text: originalText }, (response) => {
+     chrome.storage.local.get(['settings'], (res) => {
+        const settings = res.settings || {};
+        let styleProfile = null;
+        if (settings.styleLearning) {
+           styleProfile = captureStyleProfile();
+        }
+
+        chrome.runtime.sendMessage({ 
+           type: 'AI_IMPROVE', 
+           payload: {
+              text: originalText,
+              messages: getLastMessages(10),
+              timeContext: new Date().toLocaleString(),
+              tone: settings.tone || 'Friendly',
+              styleExamples: styleProfile ? styleProfile.join(' | ') : ''
+           }
+        }, (response) => {
         clearTimeout(failsafe);
         improveBtn.classList.remove('loading');
         improveBtn.innerHTML = '<span>✨</span> Improve';
@@ -1143,7 +1159,8 @@
            showToast('❌ Failed to improve message');
         }
      });
-  });
+   });
+});
 
   // ============================================================================
   // 4. EVENT HANDLERS
@@ -1580,17 +1597,11 @@
     }
 
     const lastMsg = history[history.length - 1];
+    let isFollowUp = false;
+    
     if (lastMsg.role === 'assistant') {
-      showToast('⌛ Waiting for a reply from the other person.');
-      const suggestionsCont = shadow.getElementById('waqr-suggestions');
-      if (suggestionsCont) {
-        suggestionsCont.innerHTML = `
-          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; color:#64748b; font-size:12px; text-align:center;">
-             Waiting for a response... Suggesting check-ins soon.
-          </div>
-        `;
-      }
-      return;
+      isFollowUp = true;
+      showToast('⌛ Generating a smart follow-up...');
     }
 
     const genBtn = shadow.getElementById('waqr-generate');
@@ -1608,6 +1619,7 @@
         type: 'AI_GENERATE',
         history: {
           messages: history,
+          mode: isFollowUp ? 'follow_up' : 'reply',
           timestampContext: new Date().toLocaleString(),
           tone: settings.tone || 'Friendly',
           replyStyle: settings.replyStyle || 'Balanced',

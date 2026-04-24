@@ -144,7 +144,7 @@ async function handleFeatureRequest(feature, request, sendResponse) {
         safeSendResponse(sendResponse, payload);
       });
     } else if (feature === 'improve') {
-      await improveMessage(request.text, (payload) => {
+      await improveMessage(request.payload, (payload) => {
         if (!payload.error) incrementUsage(feature);
         safeSendResponse(sendResponse, payload);
       });
@@ -238,11 +238,7 @@ async function generateAiReply(context, personality, sendResponse) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': data.jwtToken ? `Bearer ${data.jwtToken}` : '' },
       body: JSON.stringify({ 
-        messages: context.messages, 
-        voiceTranscript: context.voiceTranscript,
-        tone: context.tone, 
-        replyStyle: context.replyStyle,
-        emojiUsage: context.emojiUsage,
+        ...context,
         apiKey: data.apiKey 
       })
     });
@@ -255,13 +251,13 @@ async function generateAiReply(context, personality, sendResponse) {
   }
 }
 
-async function improveMessage(text, sendResponse) {
+async function improveMessage(payload, sendResponse) {
   try {
     const data = await storageGet(['apiKey', 'jwtToken']);
     const response = await fetchWithTimeout(`${BACKEND_URL}/improve-message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': data.jwtToken ? `Bearer ${data.jwtToken}` : '' },
-      body: JSON.stringify({ text, apiKey: data.apiKey })
+      body: JSON.stringify({ ...payload, apiKey: data.apiKey })
     });
     if (!response.ok) throw new Error('Improve failed');
     const result = await response.json();
