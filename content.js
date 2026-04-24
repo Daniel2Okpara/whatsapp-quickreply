@@ -521,7 +521,7 @@
   modalOverlay.innerHTML = `
     <div class="waqr-modal">
       <h2>Upgrade to Pro 🚀</h2>
-      <p id="waqr-modal-msg">You've reached your daily limit of 10 AI actions. Upgrade to continue using AI features without limits.</p>
+      <p id="waqr-modal-msg">You’ve reached today’s limit. Upgrade to continue instantly 🚀</p>
       <button class="waqr-modal-btn primary" id="waqr-modal-upgrade">Upgrade Now</button>
       <button class="waqr-modal-btn secondary" id="waqr-modal-close">Maybe Later</button>
     </div>
@@ -625,58 +625,58 @@
   settingsPanel.style.cssText = `
     display:none; position:fixed;
     background:white; border:1px solid #e2e8f0; border-radius:12px;
-    padding:16px; box-shadow:0 12px 48px rgba(0,0,0,0.22);
-    z-index:1000001; width:300px; max-height:80vh; overflow-y:auto;
+    padding:12px; box-shadow:0 12px 48px rgba(0,0,0,0.22);
+    z-index:1000001; width:260px; max-height:80vh; overflow-y:auto;
     pointer-events:auto;
   `;
   settingsPanel.innerHTML = `
-    <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:#0f172a;display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#0f172a;display:flex;justify-content:space-between;align-items:center;">
       <span>⚙️ Settings</span>
       <button id="waqr-settings-close" style="background:none;border:none;cursor:pointer;font-size:18px;color:#94a3b8;">×</button>
     </div>
 
-    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Default Tone</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:12px;" id="waqr-set-tone">
+    <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px;">Default Tone</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;" id="waqr-set-tone">
       <button class="waqr-set-btn small" data-group="tone" data-value="casual">Casual</button>
       <button class="waqr-set-btn small" data-group="tone" data-value="professional">Professional</button>
       <button class="waqr-set-btn small" data-group="tone" data-value="friendly">Friendly</button>
       <button class="waqr-set-btn small" data-group="tone" data-value="direct">Direct</button>
     </div>
 
-    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Reply Style</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:12px;">
+    <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px;">Reply Style</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:8px;">
       <button class="waqr-set-btn small" data-group="replyStyle" data-value="short">Short</button>
       <button class="waqr-set-btn small" data-group="replyStyle" data-value="balanced">Balanced</button>
       <button class="waqr-set-btn small" data-group="replyStyle" data-value="detailed">Detailed</button>
     </div>
 
-    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Emoji Usage</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:16px;">
-      <button class="waqr-set-btn" data-group="emojiUsage" data-value="none">None</button>
-      <button class="waqr-set-btn" data-group="emojiUsage" data-value="minimal">Minimal</button>
-      <button class="waqr-set-btn" data-group="emojiUsage" data-value="natural">Natural</button>
+    <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px;">Emoji Usage</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:12px;">
+      <button class="waqr-set-btn small" data-group="emojiUsage" data-value="none">None</button>
+      <button class="waqr-set-btn small" data-group="emojiUsage" data-value="minimal">Minimal</button>
+      <button class="waqr-set-btn small" data-group="emojiUsage" data-value="natural">Natural</button>
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:6px;">
       <div>
-        <div style="font-size:13px;font-weight:600;color:#1e293b;">Auto Follow-ups</div>
-        <div style="font-size:11px;color:#94a3b8;">Suggest when to check in</div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;">Auto Follow-ups</div>
+        <div style="font-size:10px;color:#94a3b8;">Suggest when to check in</div>
       </div>
       <label class="waqr-toggle"><input type="checkbox" id="waqr-set-followup" checked><span class="waqr-slider"></span></label>
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:12px;">
       <div>
-        <div style="font-size:13px;font-weight:600;color:#1e293b;">Style Learning</div>
-        <div style="font-size:11px;color:#94a3b8;">Match how you write</div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;">Style Learning</div>
+        <div style="font-size:10px;color:#94a3b8;">Match how you write</div>
       </div>
       <label class="waqr-toggle"><input type="checkbox" id="waqr-set-learning" checked><span class="waqr-slider"></span></label>
     </div>
 
-    <hr style="border:none;border-top:1px solid #e2e8f0;margin-bottom:14px;">
-    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Account</div>
-    <div id="waqr-email-display" style="font-size:12px;color:#64748b;margin-bottom:8px;"></div>
-    <a href="#" id="waqr-change-email-toggle" style="display:block;font-size:13px;color:#27a55e;text-decoration:none;font-weight:600;margin-bottom:8px;">Change email address →</a>
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Account</div>
+    <div id="waqr-email-display" style="font-size:11px;color:#64748b;margin-bottom:6px;"></div>
+    <a href="#" id="waqr-change-email-toggle" style="display:block;font-size:12px;color:#27a55e;text-decoration:none;font-weight:600;margin-bottom:6px;">Change email address →</a>
     <div id="waqr-change-email-box" style="display:none;">
       <input type="email" id="waqr-change-current" placeholder="Current email" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;box-sizing:border-box;font-size:13px;">
       <input type="email" id="waqr-change-new" placeholder="New email" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:8px;box-sizing:border-box;font-size:13px;">
@@ -731,6 +731,15 @@
         settingsPanel.style.display = 'block';
         loadSettingsUI();
       }
+    });
+  }
+
+  // Wire settings close button
+  const settingsCloseBtn = shadow.querySelector('#waqr-settings-close');
+  if (settingsCloseBtn) {
+    settingsCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      settingsPanel.style.display = 'none';
     });
   }
 
@@ -1103,10 +1112,12 @@
         }
      }, 15000);
 
-     chrome.storage.local.get(['settings'], (res) => {
-        const settings = res.settings || {};
+     chrome.storage.local.get(['waqrSettings', 'plan'], (res) => {
+        const settings = res.waqrSettings || {};
+        const isProOrTrial = res.plan === 'pro' || res.plan === 'trial';
         let styleProfile = null;
-        if (settings.styleLearning) {
+        
+        if (settings.styleLearning !== 'off' && isProOrTrial) {
            styleProfile = captureStyleProfile();
         }
 
@@ -1116,7 +1127,7 @@
               text: originalText,
               messages: getLastMessages(10),
               timeContext: new Date().toLocaleString(),
-              tone: settings.tone || 'Friendly',
+              tone: settings.tone || 'friendly',
               styleExamples: styleProfile ? styleProfile.join(' | ') : ''
            }
         }, (response) => {
@@ -1608,10 +1619,12 @@
     genBtn.innerHTML = '✨ Thinking...';
     genBtn.disabled = true;
 
-    chrome.storage.local.get(['settings', 'plan'], (res) => {
-      const settings = res.settings || {};
+    chrome.storage.local.get(['waqrSettings', 'plan'], (res) => {
+      const settings = res.waqrSettings || {};
+      const isProOrTrial = res.plan === 'pro' || res.plan === 'trial';
       let styleProfile = null;
-      if (settings.styleLearning) {
+
+      if (settings.styleLearning !== 'off' && isProOrTrial) {
         styleProfile = captureStyleProfile();
       }
 
@@ -1621,9 +1634,9 @@
           messages: history,
           mode: isFollowUp ? 'follow_up' : 'reply',
           timestampContext: new Date().toLocaleString(),
-          tone: settings.tone || 'Friendly',
-          replyStyle: settings.replyStyle || 'Balanced',
-          emojiUsage: settings.emojiUsage || 'Natural',
+          tone: settings.tone || 'friendly',
+          replyStyle: settings.replyStyle || 'balanced',
+          emojiUsage: settings.emojiUsage || 'natural',
           styleProfile: styleProfile
         }
       }, (response) => {

@@ -168,8 +168,14 @@ function resetUsageIfNeeded(data) {
 }
 
 function canUseFeature(data, feature) {
-  // Pro has no limits
-  if (data.plan === 'pro') return true;
+  const usage = data.usage || { aiReply: 0, improve: 0, transcribe: 0 };
+  const totalActions = (usage.aiReply || 0) + (usage.improve || 0);
+
+  // Pro limits: 200 combined actions per day
+  if (data.plan === 'pro') {
+    if (totalActions >= 200) return false;
+    return true;
+  }
 
   // Trial logic
   if (data.plan === 'trial') {
@@ -180,9 +186,8 @@ function canUseFeature(data, feature) {
     return true;
   }
 
-  // Free limits: 10 per day
+  // Free limits: 10 per day per feature
   if (data.plan === 'free' || !data.plan) {
-    const usage = data.usage || { aiReply: 0, improve: 0, transcribe: 0 };
     if (feature === 'aiReply' && usage.aiReply >= 10) return false;
     if (feature === 'improve' && usage.improve >= 10) return false;
   }
