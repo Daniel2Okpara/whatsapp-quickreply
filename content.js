@@ -1438,25 +1438,33 @@
 
   function getLast15Messages() {
     const results = [];
-    // Broad selector for message shells
-    const bubbles = Array.from(document.querySelectorAll('[data-testid="msg-container"], .copyable-area [role="row"]'));
+    // Polymorphic selectors for the widest possible compatibility
+    const bubbles = Array.from(document.querySelectorAll(
+      '[data-testid="msg-container"], ' +
+      '.message-in, .message-out, ' +
+      'div[role="row"], ' + 
+      '.copyable-area [role="row"]'
+    ));
+
     bubbles.forEach(bubble => {
-      const msgIn = bubble.querySelector('[data-testid="msg-in"]');
-      const msgOut = bubble.querySelector('[data-testid="msg-out"]');
-      if (!msgIn && !msgOut) return; // Skip non-message rows
+      // Determine direction using multiple possible signals
+      const msgIn = bubble.querySelector('[data-testid="msg-in"]') || bubble.classList.contains('message-in');
+      const msgOut = bubble.querySelector('[data-testid="msg-out"]') || bubble.classList.contains('message-out');
       
+      if (!msgIn && !msgOut) return; // Skip non-message rows
       const isIn = !!msgIn;
       
-      // 1. Audio detection
+      // 1. Audio detection (Priority 1)
       const audioEl = bubble.querySelector('audio') || bubble.querySelector('[data-testid="audio-player"] audio');
       if (audioEl && audioEl.src) {
         results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out' });
       } 
-      // 2. Text detection (Improved selectors)
+      // 2. Text detection (Priority 2)
       else {
         const textEl = bubble.querySelector('.selectable-text span') || 
                        bubble.querySelector('[data-testid="message-text"]') ||
                        bubble.querySelector('.copyable-text span') ||
+                       bubble.querySelector('div.copyable-text div[dir="ltr"]') ||
                        bubble.querySelector('._ao3e');
                        
         if (textEl) {
@@ -1467,6 +1475,11 @@
         }
       }
     });
+
+    if (results.length === 0) {
+      console.warn('WAQR: No messages detected with current selectors. Bubbles found:', bubbles.length);
+    }
+    
     return results.slice(-15);
   }
 
@@ -2068,14 +2081,40 @@
   }
 
   function injectTranscribeButtons() {
-    const audioPlayers = document.querySelectorAll('[data-testid="audio-player"], [data-testid="ptt-button"], audio');
+    const audioPlayers = document.querySelectorAll(
+      '[data-testid="audio-player"], ' +
+      '[data-testid="ptt-button"], ' +
+      'audio'
+    );
+    
     audioPlayers.forEach(player => {
-      const bubble = player.closest('[data-testid="msg-container"]') || player.closest('.copyable-area') || player.closest('div[role="row"]');
+      // Find the message container (msg-container, row, or generic div)
+      const bubble = player.closest('[data-testid="msg-container"]') || 
+                     player.closest('[role="row"]') || 
+                     player.closest('.message-in, .message-out') ||
+                     player.closest('div[role="row"]');
+                     
       if (!bubble || bubble.querySelector('.waqr-transcribe-btn-chat')) return;
 
       const btn = document.createElement('button');
       btn.className = 'waqr-transcribe-btn-chat';
       btn.innerHTML = '🎙 Transcribe';
+      
+      // Force distinct styling to ensure visibility
+      btn.style.cssText = `
+        display: inline-block !important;
+        background: #a855f7 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 4px !important;
+        padding: 4px 8px !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        margin: 4px !important;
+        z-index: 10 !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+      `;
       
       btn.onclick = async (e) => {
         e.stopPropagation();
@@ -2124,7 +2163,12 @@
         }
       };
 
-      const target = bubble.querySelector('[data-testid="msg-in"]') || bubble.querySelector('[data-testid="msg-out"]') || bubble;
+      // Primary insertion point: msg-in or msg-out content
+      const target = bubble.querySelector('[data-testid="msg-in"] > div') || 
+                     bubble.querySelector('[data-testid="msg-out"] > div') || 
+                     bubble.querySelector('.copyable-text') ||
+                     bubble;
+                     
       if (target) target.appendChild(btn);
     });
   }
