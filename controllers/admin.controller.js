@@ -50,19 +50,42 @@ exports.getUser = async (req, res) => {
 
 exports.simulateWebhook = async (req, res) => {
   try {
-    // Protected admin route should ensure only admins call this
-    const { alert_name, email, subscription_id, extra } = req.body || {};
-    if (!alert_name || !email) return res.status(400).json({ error: 'alert_name_and_email_required' });
+    const { alert_name, email, subscription_id } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'email_required' });
 
-    // Build a payload similar to Paddle form post
-    const body = Object.assign({}, extra || {}, { alert_name, email, subscription_id, is_simulation: true });
-    const raw = querystring.stringify(body);
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+       const crypto = require('crypto');
+       user = new User({ email: email.toLowerCase(), password: crypto.randomBytes(8).toString('hex') });
+    }
 
-    const result = await paddleController.processPaddlePayload(body, raw);
-    return res.json({ success: true, result });
+    if (alert_name === 'subscription_created' || alert_name === 'upgrade') {
+      user.plan = 'pro';
+      user.subscriptionStatus = 'active';
+      user.subscriptionId = subscription_id || `manual_${Date.now()}`;
+    } else if (alert_name === 'subscription_cancelled' || alert_name === 'cancel' || alert_name === 'downgrade') {
+      user.plan = 'free';
+      user.subscriptionStatus = 'cancelled';
+      user.subscriptionId = null;
+    }
+
+    await user.save();
+
+    // Notify extension via SSE
+    try {
+      const eventsService = require('../services/events.service');
+      eventsService.notifyEmail(user.email, { 
+        email: user.email, 
+        plan: user.plan, 
+        subscriptionId: user.subscriptionId, 
+        subscriptionStatus: user.subscriptionStatus 
+      });
+    } catch (e) {}
+
+    return res.json({ success: true, user });
   } catch (err) {
     console.error('[Admin] simulateWebhook error', err);
-    return res.status(500).json({ error: 'server_error' });
+    return res.status(500).json({ error: 'server_error', details: err.message });
   }
 };
 
