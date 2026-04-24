@@ -1436,43 +1436,59 @@
   });
 
   function getLastMessages(count = 20) {
-    const bubbles = document.querySelectorAll('.message-in, .message-out, [data-testid="msg-container"]');
+    // ABSOLUTE SCRAPER: Targets the precise metadata structure WhatsApp uses for every message
+    const nodes = document.querySelectorAll('div.copyable-text[data-pre-plain-text]');
     const history = [];
-    const recentBubbles = Array.from(bubbles).slice(-count);
+    const recentNodes = Array.from(nodes).slice(-count);
 
-    recentBubbles.forEach(bubble => {
-      const isOut = bubble.classList.contains('message-out') || 
-                    bubble.closest('.message-out') ||
-                    bubble.getAttribute('data-id')?.includes('true_');
+    recentNodes.forEach(node => {
+      // 1. Determine Ownership (Us vs Them)
+      const container = node.closest('.message-in, .message-out, [data-id]');
+      let isOut = false;
+      if (container) {
+          if (container.classList.contains('message-out')) isOut = true;
+          else if (container.getAttribute('data-id')?.includes('true_')) isOut = true;
+      }
 
-      const textEl = bubble.querySelector('.selectable-text span') || bubble.querySelector('[data-testid="message-text"]');
-      if (textEl) {
-        let text = textEl.innerText;
-        let timestamp = '';
-        const meta = bubble.querySelector('[data-pre-plain-text]') || bubble.closest('[data-pre-plain-text]');
-        if (meta) {
-          timestamp = meta.getAttribute('data-pre-plain-text');
-        } else {
-          const timeEl = bubble.querySelector('div[data-testid="msg-meta"]');
-          if (timeEl) timestamp = timeEl.innerText; 
-        }
+      // 2. Extract Text
+      const textEl = node.querySelector('span.selectable-text') || node.querySelector('span[dir="ltr"]') || node.querySelector('span') || node;
+      const text = textEl.innerText || textEl.textContent || '';
+      
+      // 3. Extract Timestamp Context
+      const timestamp = node.getAttribute('data-pre-plain-text') || '';
 
+      if (text.trim() && text.trim().length > 1) {
         history.push({
-          role: isOut ? 'assistant' : 'user',
+          role: isOut ? 'assistant' : 'user', // "assistant" is us replying, "user" is the other person
           content: text.trim(),
           timestamp: timestamp.trim()
         });
       }
     });
+
     return history;
   }
 
   function captureStyleProfile() {
-    const allBubbles = Array.from(document.querySelectorAll('.message-out'));
-    const myMessages = allBubbles.slice(-50).map(b => {
-      const textEl = b.querySelector('.selectable-text span') || b.querySelector('[data-testid="message-text"]');
-      return textEl ? textEl.innerText.trim() : '';
-    }).filter(t => t.length > 5);
+    const nodes = document.querySelectorAll('div.copyable-text[data-pre-plain-text]');
+    const myMessages = [];
+    
+    // Reverse scan to get latest and stop at 50
+    for (let i = nodes.length - 1; i >= 0 && myMessages.length < 50; i--) {
+      const node = nodes[i];
+      const container = node.closest('.message-in, .message-out, [data-id]');
+      let isOut = false;
+      if (container) {
+          if (container.classList.contains('message-out')) isOut = true;
+          else if (container.getAttribute('data-id')?.includes('true_')) isOut = true;
+      }
+      
+      if (isOut) {
+        const textEl = node.querySelector('span.selectable-text') || node.querySelector('span[dir="ltr"]') || node;
+        const text = (textEl.innerText || textEl.textContent || '').trim();
+        if (text.length > 5) myMessages.push(text);
+      }
+    }
 
     if (myMessages.length === 0) return null;
 
