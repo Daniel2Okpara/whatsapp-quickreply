@@ -1605,13 +1605,15 @@
       }
 
       chrome.runtime.sendMessage({
-        type: 'AI_REPLY',
-        history: history,
-        timestampContext: new Date().toLocaleString(),
-        tone: settings.tone || 'Friendly',
-        replyStyle: settings.replyStyle || 'Balanced',
-        emojiUsage: settings.emojiUsage || 'Natural',
-        styleProfile: styleProfile
+        type: 'AI_GENERATE',
+        history: {
+          messages: history,
+          timestampContext: new Date().toLocaleString(),
+          tone: settings.tone || 'Friendly',
+          replyStyle: settings.replyStyle || 'Balanced',
+          emojiUsage: settings.emojiUsage || 'Natural',
+          styleProfile: styleProfile
+        }
       }, (response) => {
         genBtn.innerHTML = '✨ Generate AI Reply';
         genBtn.disabled = false;
