@@ -24,10 +24,10 @@ exports.processPaddlePayload = async (body, raw) => {
   const email = (body.email || '').toLowerCase();
   const subscriptionId = body.subscription_id || body.subscription || body.subscription_id_external || null;
 
-  // Deduplicate using raw body hash
+  // Deduplicate using raw body hash (unless it's an admin simulation)
   const rawHash = crypto.createHash('sha256').update(raw || '').digest('hex');
   const existingLog = await WebhookLog.findOne({ hash: rawHash });
-  if (existingLog) {
+  if (existingLog && !body.is_simulation) {
     existingLog.attempts = (existingLog.attempts || 1) + 1;
     existingLog.processedAt = new Date();
     await existingLog.save();

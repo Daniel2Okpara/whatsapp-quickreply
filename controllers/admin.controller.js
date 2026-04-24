@@ -55,7 +55,7 @@ exports.simulateWebhook = async (req, res) => {
     if (!alert_name || !email) return res.status(400).json({ error: 'alert_name_and_email_required' });
 
     // Build a payload similar to Paddle form post
-    const body = Object.assign({}, extra || {}, { alert_name, email, subscription_id });
+    const body = Object.assign({}, extra || {}, { alert_name, email, subscription_id, is_simulation: true });
     const raw = querystring.stringify(body);
 
     const result = await paddleController.processPaddlePayload(body, raw);
