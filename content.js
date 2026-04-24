@@ -625,26 +625,29 @@
   settingsPanel.style.cssText = `
     display:none; position:fixed;
     background:white; border:1px solid #e2e8f0; border-radius:12px;
-    padding:24px; box-shadow:0 12px 48px rgba(0,0,0,0.22);
-    z-index:1000001; width:380px; max-height:85vh; overflow-y:auto;
+    padding:16px; box-shadow:0 12px 48px rgba(0,0,0,0.22);
+    z-index:1000001; width:300px; max-height:80vh; overflow-y:auto;
     pointer-events:auto;
   `;
   settingsPanel.innerHTML = `
-    <div style="font-weight:700;font-size:14px;margin-bottom:18px;color:#0f172a;">⚙️ Settings</div>
+    <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:#0f172a;display:flex;justify-content:space-between;align-items:center;">
+      <span>⚙️ Settings</span>
+      <button id="waqr-settings-close" style="background:none;border:none;cursor:pointer;font-size:18px;color:#94a3b8;">×</button>
+    </div>
 
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Default Tone</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:16px;" id="waqr-set-tone">
-      <button class="waqr-set-btn" data-group="tone" data-value="casual">Casual</button>
-      <button class="waqr-set-btn" data-group="tone" data-value="professional">Professional</button>
-      <button class="waqr-set-btn" data-group="tone" data-value="friendly">Friendly</button>
-      <button class="waqr-set-btn" data-group="tone" data-value="direct">Direct</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:12px;" id="waqr-set-tone">
+      <button class="waqr-set-btn small" data-group="tone" data-value="casual">Casual</button>
+      <button class="waqr-set-btn small" data-group="tone" data-value="professional">Professional</button>
+      <button class="waqr-set-btn small" data-group="tone" data-value="friendly">Friendly</button>
+      <button class="waqr-set-btn small" data-group="tone" data-value="direct">Direct</button>
     </div>
 
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Reply Style</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:16px;">
-      <button class="waqr-set-btn" data-group="replyStyle" data-value="short">Short</button>
-      <button class="waqr-set-btn" data-group="replyStyle" data-value="balanced">Balanced</button>
-      <button class="waqr-set-btn" data-group="replyStyle" data-value="detailed">Detailed</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:12px;">
+      <button class="waqr-set-btn small" data-group="replyStyle" data-value="short">Short</button>
+      <button class="waqr-set-btn small" data-group="replyStyle" data-value="balanced">Balanced</button>
+      <button class="waqr-set-btn small" data-group="replyStyle" data-value="detailed">Detailed</button>
     </div>
 
     <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Emoji Usage</div>
@@ -1432,56 +1435,52 @@
     });
   });
 
-  function getLast15Messages() {
-    const results = [];
-    const bubbles = Array.from(document.querySelectorAll(
-      '[data-testid="msg-container"], ' +
-      '.message-in, .message-out, ' +
-      'div[role="row"], ' + 
-      '.copyable-area [role="row"]'
-    ));
+  function getLastMessages(count = 20) {
+    const bubbles = document.querySelectorAll('.message-in, .message-out, [data-testid="msg-container"]');
+    const history = [];
+    const recentBubbles = Array.from(bubbles).slice(-count);
 
-    bubbles.forEach(bubble => {
-      // STRICT SENDER DETECTION
-      // msg-in/out are the golden standards for WhatsApp message ownership
-      const msgIn = bubble.querySelector('[data-testid="msg-in"]') || bubble.classList.contains('message-in');
-      const msgOut = bubble.querySelector('[data-testid="msg-out"]') || bubble.classList.contains('message-out');
-      
-      if (!msgIn && !msgOut) return; 
-      const isIn = !!msgIn;
-      
-      const textEl = bubble.querySelector('.selectable-text span') || 
-                     bubble.querySelector('[data-testid="message-text"]') ||
-                     bubble.querySelector('.copyable-text span') ||
-                     bubble.querySelector('div.copyable-text div[dir="ltr"]') ||
-                     bubble.querySelector('._ao3e');
-                       
+    recentBubbles.forEach(bubble => {
+      const isOut = bubble.classList.contains('message-out') || 
+                    bubble.closest('.message-out') ||
+                    bubble.getAttribute('data-id')?.includes('true_');
+
+      const textEl = bubble.querySelector('.selectable-text span') || bubble.querySelector('[data-testid="message-text"]');
       if (textEl) {
-        const text = (textEl.innerText || textEl.textContent || '').trim();
-        if (text) {
-          results.push({ text, direction: isIn ? 'in' : 'out', role: isIn ? 'other' : 'user' });
+        let text = textEl.innerText;
+        let timestamp = '';
+        const meta = bubble.querySelector('[data-pre-plain-text]') || bubble.closest('[data-pre-plain-text]');
+        if (meta) {
+          timestamp = meta.getAttribute('data-pre-plain-text');
+        } else {
+          const timeEl = bubble.querySelector('div[data-testid="msg-meta"]');
+          if (timeEl) timestamp = timeEl.innerText; 
         }
+
+        history.push({
+          role: isOut ? 'assistant' : 'user',
+          content: text.trim(),
+          timestamp: timestamp.trim()
+        });
       }
     });
-
-    return results.slice(-15);
+    return history;
   }
 
-  function getConversationContext() {
-    const rawHistory = getLast15Messages();
-    return rawHistory.map(m => ({
-      role: m.direction === 'in' ? 'other' : 'user',
-      text: m.text
-    }));
-  }
+  function captureStyleProfile() {
+    const allBubbles = Array.from(document.querySelectorAll('.message-out'));
+    const myMessages = allBubbles.slice(-50).map(b => {
+      const textEl = b.querySelector('.selectable-text span') || b.querySelector('[data-testid="message-text"]');
+      return textEl ? textEl.innerText.trim() : '';
+    }).filter(t => t.length > 5);
 
-  function getConversationContext() {
-    const messages = getLast15Messages();
-    return messages.map(m => ({
-      role: m.direction === 'in' ? 'user' : 'assistant',
-      content: m.text,
-      meta: m.timestamp
-    }));
+    if (myMessages.length === 0) return null;
+
+    return {
+      samples: myMessages,
+      avgLength: myMessages.reduce((acc, m) => acc + m.length, 0) / myMessages.length,
+      emojiFrequency: myMessages.filter(m => /[\u{1F300}-\u{1F9FF}]/u.test(m)).length / myMessages.length
+    };
   }
 
   // ============================================================================
@@ -1558,58 +1557,48 @@
   // ============================================================================
 
   shadow.getElementById('waqr-generate').addEventListener('click', async () => {
-    const rawContext = getLast15Messages();
-
-    if (!rawContext || rawContext.length < 1) {
-      showToast('No recent chat messages found.');
+    const history = getLastMessages(20);
+    if (!history || history.length === 0) {
+      showToast('⚠️ No recent chat messages found.');
       return;
     }
 
-    const btn = shadow.getElementById('waqr-generate');
-    btn.classList.add('generate');
-    btn.innerHTML = '⌛ Thinking...';
-    btn.disabled = true;
-
-    const suggestionsContainer = shadow.getElementById('waqr-suggestions');
-    const typingEl = document.createElement('div');
-    typingEl.className = 'waqr-typing';
-    typingEl.innerHTML = '<span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span> Analyzing...';
-    suggestionsContainer.innerHTML = '';
-    suggestionsContainer.appendChild(typingEl);
-
-    // Filter to build clean history
-    const history = rawContext.map(m => ({
-      role: m.role === 'user' ? 'assistant' : 'user', // "user" to AI means the person we talk to
-      content: m.text
-    }));
-
-    // SENDER DETECTION FAILSAFE
-    const lastMsg = rawContext[rawContext.length - 1];
-    if (lastMsg && lastMsg.direction === 'out') {
-      showToast('AI: Waiting for a reply from the other person.');
-      btn.classList.remove('generate');
-      btn.innerHTML = '✨ Generate AI Reply';
-      btn.disabled = false;
-      typingEl.remove();
+    const lastMsg = history[history.length - 1];
+    if (lastMsg.role === 'assistant') {
+      showToast('⌛ Waiting for a reply from the other person.');
+      const suggestionsCont = shadow.getElementById('waqr-suggestions');
+      if (suggestionsCont) {
+        suggestionsCont.innerHTML = `
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; color:#64748b; font-size:12px; text-align:center;">
+             Waiting for a response... Suggesting check-ins soon.
+          </div>
+        `;
+      }
       return;
     }
 
-    chrome.storage.local.get(['waqrSettings'], (r) => {
-      const s = r.waqrSettings || {};
-      const payload = {
-        messages: history,
-        tone: s.tone || 'casual',
-        replyStyle: s.replyStyle || 'balanced',
-        emojiUsage: s.emojiUsage || 'natural',
-        mode: 'reply'
-      };
+    const genBtn = shadow.getElementById('waqr-generate');
+    genBtn.innerHTML = '✨ Thinking...';
+    genBtn.disabled = true;
 
-      chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
-        btn.classList.remove('generate');
-        btn.innerHTML = '✨ Generate AI Reply';
-        btn.disabled = false;
-        if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
+    chrome.storage.local.get(['settings', 'plan'], (res) => {
+      const settings = res.settings || {};
+      let styleProfile = null;
+      if (settings.styleLearning) {
+        styleProfile = captureStyleProfile();
+      }
 
+      chrome.runtime.sendMessage({
+        type: 'AI_REPLY',
+        history: history,
+        timestampContext: new Date().toLocaleString(),
+        tone: settings.tone || 'Friendly',
+        replyStyle: settings.replyStyle || 'Balanced',
+        emojiUsage: settings.emojiUsage || 'Natural',
+        styleProfile: styleProfile
+      }, (response) => {
+        genBtn.innerHTML = '✨ Generate AI Reply';
+        genBtn.disabled = false;
         if (response && response.suggestion) {
           displaySuggestions([response.suggestion]);
           showToast('✅ Reply ready!');
@@ -1620,30 +1609,6 @@
       });
     });
   });
-
-  // Heuristic tone detection
-  function detectTone(messagesArray) {
-    const text = (messagesArray || []).join(' ').toLowerCase();
-    if (!text) return 'casual';
-    if (
-      text.includes('meeting') ||
-      text.includes('schedule') ||
-      text.includes('regards') ||
-      text.includes('appointment') ||
-      text.includes('invoice') ||
-      text.includes('payment')
-    ) {
-      return 'professional';
-    }
-    return 'casual';
-  }
-
-  function getTimeContext() {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'morning';
-    if (hour < 18) return 'afternoon';
-    return 'evening';
-  }
 
   function displaySuggestions(suggestions) {
     const container = shadow.getElementById('waqr-suggestions');
@@ -1669,14 +1634,11 @@
         showToast('✅ Inserted!');
       });
 
-      // Also allow clicking the box itself
       div.addEventListener('click', () => insertMessage(suggestion));
       
       container.appendChild(div);
     });
   }
-
-// End of Templates Management logic purge (V13.0)
 
   // ============================================================================
   // 8. UTILITY FUNCTIONS
@@ -1691,7 +1653,6 @@
       document.querySelector('input[type="text"]') ||
       document.querySelector('input[type="search"]');
   }
-
 
   function clickSendButton() {
     const sendButton = document.querySelector('button[data-testid="compose-btn-send"]') || document.querySelector('[data-icon="send"]');
@@ -1717,9 +1678,6 @@
     return false;
   }
 
-// Legacy Shortcut system removed (V13.2)
-
-
   function insertMessage(message, autoSend = false) {
     const input = findMessageInput();
 
@@ -1728,7 +1686,6 @@
       return false;
     }
 
-    // Focus the WA input
     input.focus();
 
     if (input.isContentEditable || input.getAttribute('contenteditable') === 'true') {
@@ -1758,7 +1715,6 @@
       input.textContent = message;
     }
 
-    // Notify WhatsApp's Lexical state
     input.dispatchEvent(new Event('input', { bubbles: true }));
 
     showToast('Message inserted! ✅');
@@ -1805,7 +1761,6 @@
     syncPlanState();
   }
 
-  // Listen for storage changes (e.g. user upgrades or usage updates in another tab)
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && (changes.plan || changes.usage || changes.subscription)) {
       syncPlanState();
@@ -1815,15 +1770,10 @@
   initializeComponents();
 
   function getCurrentChatName() {
-    // Probe 1: Primary data-testid (Standard)
     const testIdEl = document.querySelector('[data-testid="conversation-info-header-chat-title"]');
     if (testIdEl && testIdEl.textContent.trim()) return testIdEl.textContent.trim();
-
-    // Probe 2: Header title attribute (Common for individuals)
     const headerTitle = document.querySelector('#main header span[title]');
     if (headerTitle && headerTitle.getAttribute('title')) return headerTitle.getAttribute('title').trim();
-
-    // Probe 3: Sidebar active selection (Best fallback)
     const activeSidebar = document.querySelector('[aria-selected="true"]') || 
                           document.querySelector('[data-testid="list-item-active"]') ||
                           document.querySelector('div[role="row"]._ak_8');
@@ -1832,8 +1782,6 @@
       const sidebarTitle = activeSidebar.querySelector('span[title]') || activeSidebar.querySelector('div[title]');
       if (sidebarTitle && sidebarTitle.getAttribute('title')) return sidebarTitle.getAttribute('title').trim();
     }
-
-    // Probe 4: Aria-label on the entire header
     const ariaHeader = document.querySelector('header [aria-label]');
     if (ariaHeader && ariaHeader.getAttribute('aria-label')) {
        const label = ariaHeader.getAttribute('aria-label').trim()
@@ -1842,41 +1790,27 @@
                                 .replace('Contact info', '').trim();
        if (label && label.length > 1) return label;
     }
-
-    // Probe 5: Deep-scrape spans in header (last resort)
     const headerSpans = document.querySelectorAll('#main header span');
     for (const span of headerSpans) {
       const txt = span.textContent.trim();
-      // Heuristic: Names usually don't have ":" or "/" and aren't numbers
       if (txt.length > 2 && !txt.includes(':') && !txt.includes('/') && !/[\d]/.test(txt)) {
         return txt;
       }
     }
-
-
     return null;
   }
 
   function getActiveChatMetadata() {
-
-     
-     // 1. Gather ALL Candidate JIDs from the entire page
      const allElements = document.querySelectorAll('*');
      const candidates = [];
      const viewportWidth = window.innerWidth;
-     const viewportHeight = window.innerHeight;
-
-
 
      for (const el of allElements) {
         let rawId = null;
-        
-        // Scan common attributes
         const did = el.getAttribute('data-id') || '';
         if (did.includes('@c.us') || did.includes('@g.us')) rawId = did;
         
         if (!rawId) {
-           // Scan every single attribute as a backup
            for (const attr of el.attributes) {
               if (attr.value.includes('@c.us') || attr.value.includes('@g.us')) {
                  rawId = attr.value;
@@ -1887,21 +1821,15 @@
 
         if (rawId) {
            const rect = el.getBoundingClientRect();
-           // Is it visible?
            if (rect.width > 0 && rect.height > 0) {
               const centerX = rect.left + (rect.width / 2);
-              const centerY = rect.top + (rect.height / 2);
-              
-              // Score based on location (Favor Center-Right for Main Chat)
-              // Sidebar is usually 0 -> 400px. Main is > 400px.
               let score = 0;
-              if (centerX > 400) score += 100; // Big boost for being in main pane
-              if (centerX > viewportWidth / 2) score += 50; // Extra boost for being right-aligned
+              if (centerX > 400) score += 100;
+              if (centerX > viewportWidth / 2) score += 50;
               
               candidates.push({
                  id: rawId,
                  score: score,
-                 rect: rect,
                  centerX: centerX
               });
            }
@@ -1909,18 +1837,11 @@
      }
 
      if (candidates.length === 0) {
-
         return { phone: null, chatName: getCurrentChatName(), type: 'none' };
      }
 
-     // 2. Sort by Score (Primary) then Center-X (Secondary)
      candidates.sort((a, b) => b.score - a.score || b.centerX - a.centerX);
-     
-
-
      const bestPick = candidates[0].id;
-
-     
      return parseChatId(bestPick);
   }
 
@@ -1935,35 +1856,7 @@
      return { phone: null, chatName: getCurrentChatName(), type: 'other' };
   }
 
-  function getSidebar() {
-    // Probe 1: Standard ID
-    let el = document.querySelector('#side');
-    if (el) return el;
-
-    // Probe 2: TestID
-    el = document.querySelector('[data-testid="side"]');
-    if (el) return el;
-
-    return null;
-  }
-
-
-
-  function logAllTextboxes() {
-    // Nuclear Debugging: Log every single textbox on the screen to help the developer identify the name
-    const editables = document.querySelectorAll('[contenteditable="true"]');
-
-  }
-
-  function clickSendButton() {
-    const sendBtn = document.querySelector('span[data-testid="send"]')?.closest('button');
-    if (sendBtn) sendBtn.click();
-  }
-
-  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
   function copyToClipboard(text) {
-     // V9.0 - Robust Copy Fallback
      try {
         const textarea = document.createElement('textarea');
         textarea.value = text;
@@ -1979,10 +1872,8 @@
            showToast('✅ Message copied to clipboard!');
            return true;
         }
-      } catch (err) {
-      }
+      } catch (err) {}
      
-     // Last resort modern API
      navigator.clipboard.writeText(text).then(() => {
         showToast('✅ Message copied to clipboard!');
      }).catch(() => {
@@ -1991,7 +1882,6 @@
      return false;
   }
 
-  // --- Message Listeners (V13.0) ---
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === 'COPY_TEXT') {
        copyToClipboard(request.text);
@@ -2012,22 +1902,9 @@
     }
   });
 
-  // Manual Scan Event Listener
-  setTimeout(() => {
-    const scanBtn = shadow.getElementById('waqr-manual-scan-btn');
-    if (scanBtn) {
-      scanBtn.addEventListener('click', () => {
-        showToast('Scanning DOM... check console (F12)');
-        logAllTextboxes();
-      });
-    }
-  }, 1000);
-
-  let currentTranscription = '';
-
   function initializeExtension() {
-    if (window_WAQR_LOADED) return;
-    window_WAQR_LOADED = true;
+    if (window.WAQR_LOADED) return;
+    window.WAQR_LOADED = true;
 
     loadTemplates();
     loadTemplatesFromCloud();
@@ -2035,11 +1912,9 @@
     syncPlanState();
   }
 
-  // Check for email and load extension or show onboarding
   chrome.storage.local.get(['email'], (res) => {
     const email = res && res.email;
     if (!email) {
-      // Show beautiful onboarding modal at right-bottom corner
       const hostEl = document.createElement('div');
       hostEl.id = 'waqr-onboarding-host';
       hostEl.setAttribute('style', 'position: fixed; bottom: 24px; right: 24px; z-index: 999999; pointer-events: auto;');
@@ -2049,59 +1924,16 @@
       const styleEl = document.createElement('style');
       styleEl.textContent = `
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        
-        .onboarding-modal {
-          background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-          padding: 32px;
-          max-width: 380px;
-          width: 100%;
-          animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        
-        @keyframes slideUp {
-          from { transform: translateY(40px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-        
-        .onboarding-header {
-          display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
-        }
-        
-        .onboarding-title {
-          font-size: 18px; font-weight: 700; color: #0f172a;
-        }
-        
-        .onboarding-subtitle {
-          font-size: 14px; color: #64748b; margin-bottom: 24px; line-height: 1.5;
-        }
-        
+        .onboarding-modal { background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15); padding: 32px; max-width: 380px; width: 100%; animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .onboarding-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+        .onboarding-title { font-size: 18px; font-weight: 700; color: #0f172a; }
+        .onboarding-subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; line-height: 1.5; }
         .onboarding-input-group { margin-bottom: 20px; }
-        
-        .onboarding-input {
-          width: 100%; padding: 12px 16px; font-size: 14px;
-          border: 1.5px solid #e2e8f0; border-radius: 10px;
-          background: white; color: #1e293b;
-          transition: all 0.2s;
-        }
-        
-        .onboarding-input:focus {
-          outline: none; border-color: #27a55e; box-shadow: 0 0 0 3px rgba(39, 165, 94, 0.1);
-        }
-        
-        .onboarding-btn {
-          width: 100%; padding: 12px 16px; font-size: 15px; font-weight: 600;
-          background: linear-gradient(135deg, #27a55e 0%, #0f7a52 100%);
-          color: white; border: none; border-radius: 10px;
-          cursor: pointer; transition: all 0.3s;
-          box-shadow: 0 4px 12px rgba(39, 165, 94, 0.2);
-        }
-        
-        .onboarding-error {
-          color: #dc2626; font-size: 13px; margin-top: 8px; display: none;
-        }
+        .onboarding-input { width: 100%; padding: 12px 16px; font-size: 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; background: white; color: #1e293b; transition: all 0.2s; }
+        .onboarding-input:focus { outline: none; border-color: #27a55e; box-shadow: 0 0 0 3px rgba(39, 165, 94, 0.1); }
+        .onboarding-btn { width: 100%; padding: 12px 16px; font-size: 15px; font-weight: 600; background: linear-gradient(135deg, #27a55e 0%, #0f7a52 100%); color: white; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(39, 165, 94, 0.2); }
+        .onboarding-error { color: #dc2626; font-size: 13px; margin-top: 8px; display: none; }
       `;
       shadow.appendChild(styleEl);
 
@@ -2116,16 +1948,11 @@
             <div style="font-size: 12px; color: #94a3b8;">Activate to get started</div>
           </div>
         </div>
-        
-        <div class="onboarding-subtitle">
-          Enter your email to unlock templates, AI replies, and improve feature.
-        </div>
-        
+        <div class="onboarding-subtitle">Enter your email to unlock templates, AI replies, and improve feature.</div>
         <div class="onboarding-input-group">
           <input type="email" class="onboarding-input" id="onboard-email" placeholder="you@example.com" autocomplete="email">
           <div class="onboarding-error" id="onboard-error"></div>
         </div>
-        
         <button class="onboarding-btn" id="onboard-activate">Activate Extension</button>
       `;
       shadow.appendChild(modal);
