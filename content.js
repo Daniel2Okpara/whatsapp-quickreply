@@ -97,22 +97,22 @@
     button:hover { opacity: 0.9; transform: translateY(-1px); }
 
     .waqr-transcribe-btn-chat {
-      background: #a855f7;
-      color: white;
-      border: none;
-      padding: 4px 10px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 6px;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      transition: all 0.2s;
-      box-shadow: 0 2px 5px rgba(168, 85, 247, 0.3);
-      pointer-events: auto;
-      z-index: 100;
+      background: #a855f7 !important;
+      color: white !important;
+      border: 1px solid #7e22ce !important;
+      padding: 5px 12px !important;
+      border-radius: 14px !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      cursor: pointer !important;
+      margin-top: 6px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      transition: all 0.2s !important;
+      box-shadow: 0 3px 8px rgba(168, 85, 247, 0.4) !important;
+      pointer-events: auto !important;
+      z-index: 100 !important;
     }
     .waqr-transcribe-btn-chat:hover {
       background: #9333ea;
@@ -1256,6 +1256,7 @@
   }
 
   function loadTemplatesFromCloud() {
+    if (!isContextValid()) return;
     chrome.runtime.sendMessage({ type: 'GET_TEMPLATES' }, (res) => {
       if (res && res.templates) {
         const mapped = res.templates.map(t => ({
@@ -1437,18 +1438,33 @@
 
   function getLast15Messages() {
     const results = [];
-    const bubbles = Array.from(document.querySelectorAll('[data-testid="msg-container"]'));
+    // Broad selector for message shells
+    const bubbles = Array.from(document.querySelectorAll('[data-testid="msg-container"], .copyable-area [role="row"]'));
     bubbles.forEach(bubble => {
       const msgIn = bubble.querySelector('[data-testid="msg-in"]');
       const msgOut = bubble.querySelector('[data-testid="msg-out"]');
-      if (!msgIn && !msgOut) return;
+      if (!msgIn && !msgOut) return; // Skip non-message rows
+      
       const isIn = !!msgIn;
+      
+      // 1. Audio detection
       const audioEl = bubble.querySelector('audio') || bubble.querySelector('[data-testid="audio-player"] audio');
       if (audioEl && audioEl.src) {
         results.push({ type: 'audio', src: audioEl.src, direction: isIn ? 'in' : 'out' });
-      } else {
-        const textEl = bubble.querySelector('.selectable-text span');
-        if (textEl) results.push({ text: textEl.innerText.trim(), direction: isIn ? 'in' : 'out' });
+      } 
+      // 2. Text detection (Improved selectors)
+      else {
+        const textEl = bubble.querySelector('.selectable-text span') || 
+                       bubble.querySelector('[data-testid="message-text"]') ||
+                       bubble.querySelector('.copyable-text span') ||
+                       bubble.querySelector('._ao3e');
+                       
+        if (textEl) {
+          const text = (textEl.innerText || textEl.textContent || '').trim();
+          if (text) {
+            results.push({ text, direction: isIn ? 'in' : 'out' });
+          }
+        }
       }
     });
     return results.slice(-15);
@@ -1467,6 +1483,7 @@
   // 6. PLAN & USAGE SYNC
   // ============================================================================
   function syncPlanState() {
+    if (!isContextValid()) return;
     chrome.runtime.sendMessage({ type: 'GET_PLAN_STATE' }, (state) => {
       if (!state) return;
       updateUIForPlan(state);
@@ -2085,7 +2102,9 @@
 
         try {
           const buffer = await fetchAudioBuffer(audioEl.src);
+          if (!isContextValid()) return;
           chrome.runtime.sendMessage({ type: 'AI_TRANSCRIBE', audioBuffer: buffer }, (res) => {
+            if (!res) return;
             btn.innerHTML = '🎙 Transcribed!';
             btn.classList.remove('loading');
             if (res && res.text) {
@@ -2171,6 +2190,7 @@
           mode: 'reply'
         };
 
+        if (!isContextValid()) return;
         chrome.runtime.sendMessage({ type: 'AI_GENERATE', history: payload }, (response) => {
           if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
           if (response && response.suggestion) {
