@@ -8,23 +8,19 @@ exports.getUserStatus = async (req, res) => {
     let user = await User.findOne({ email });
     if (!user) {
       const crypto = require('crypto');
-      const trialDays = 3;
-      const trialEnd = new Date();
-      trialEnd.setDate(trialEnd.getDate() + trialDays);
-      
       user = new User({ 
         email, 
         password: crypto.randomBytes(8).toString('hex'),
-        plan: 'trial',
-        subscriptionStatus: 'active',
-        trialEnd
+        plan: 'free',
+        trialUsed: false,
+        subscriptionStatus: 'inactive'
       });
       await user.save();
     }
 
-    let plan = user.plan || (user.isPro ? 'pro' : 'free');
+    let plan = user.plan || 'free';
     const status = (user.subscriptionStatus === 'active') ? 'active' : 'inactive';
-    const trialEnd = user.trialEnd;
+    const trialEnd = user.trialEndsAt || user.trialEnd;
 
     // Server-side trial expiry check
     if (plan === 'trial' && trialEnd && new Date() > new Date(trialEnd)) {
@@ -35,6 +31,7 @@ exports.getUserStatus = async (req, res) => {
       plan, 
       status, 
       trialEnd,
+      trialUsed: user.trialUsed || false,
       totalCreditsUsed: user.creditsUsed || 0
     });
   } catch (err) {

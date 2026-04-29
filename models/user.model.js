@@ -26,6 +26,10 @@ const userSchema = new mongoose.Schema({
     enum: ['free', 'pro', 'trial'],
     default: 'free'
   },
+  trialUsed: {
+    type: Boolean,
+    default: false
+  },
   subscriptionId: {
     type: String,
     default: null
@@ -35,7 +39,11 @@ const userSchema = new mongoose.Schema({
     enum: ['active', 'cancelled', 'inactive'],
     default: 'inactive'
   },
-  trialEnd: {
+  trialEnd: { // Keeping trialEnd as it was, but adding trialEndsAt for clarity if needed, or just reusing trialEnd.
+    type: Date,
+    default: null
+  },
+  trialEndsAt: {
     type: Date,
     default: null
   },

@@ -50,27 +50,26 @@ exports.processPaddlePayload = async (body, raw) => {
     user = new User({ email, password: crypto.randomBytes(8).toString('hex') });
   }
 
-  if (alertName.includes('subscription_created') || alertName.includes('subscription.created') || alertName === 'subscription.created') {
-    user.plan = body.next_bill_date ? 'trial' : 'pro'; // If there's a next bill date but it's in the future and price is 0, it's a trial
+  if (alertName.includes('subscription.created') || alertName.includes('subscription.activated') || alertName.includes('subscription_created') || alertName.includes('subscription_activated')) {
+    user.plan = 'trial';
+    user.trialUsed = true;
     user.subscriptionId = subscriptionId;
     user.subscriptionStatus = 'active';
-    if (body.next_bill_date) user.trialEnd = new Date(body.next_bill_date);
+    
+    // Set trial end to 3 days from now
+    const trialEnds = new Date();
+    trialEnds.setDate(trialEnds.getDate() + 3);
+    user.trialEndsAt = trialEnds;
+    user.trialEnd = trialEnds; // Keeping legacy for safety
   }
 
-  if (alertName.includes('subscription_activated') || alertName.includes('subscription.activated')) {
-    user.plan = body.next_bill_date ? 'trial' : 'pro';
-    user.subscriptionStatus = 'active';
-    user.subscriptionId = subscriptionId || user.subscriptionId;
-    if (body.next_bill_date) user.trialEnd = new Date(body.next_bill_date);
-  }
-
-  if (alertName.includes('subscription_cancelled') || alertName.includes('subscription.cancelled') || alertName === 'subscription.cancelled') {
+  if (alertName.includes('subscription.canceled') || alertName.includes('subscription_cancelled')) {
     user.plan = 'free';
-    user.subscriptionStatus = 'cancelled';
+    user.subscriptionStatus = 'canceled';
     user.subscriptionId = subscriptionId || user.subscriptionId;
   }
 
-  if (alertName.includes('subscription_payment_succeeded') || alertName.includes('subscription.payment_succeeded')) {
+  if (alertName.includes('transaction.paid') || alertName.includes('subscription_payment_succeeded')) {
     user.plan = 'pro';
     user.subscriptionStatus = 'active';
     user.subscriptionId = subscriptionId || user.subscriptionId;
