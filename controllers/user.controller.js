@@ -5,8 +5,22 @@ exports.getUserStatus = async (req, res) => {
     const email = (req.query.email || '').toLowerCase();
     if (!email) return res.status(400).json({ error: 'email_required' });
 
-    const user = await User.findOne({ email });
-    if (!user) return res.json({ plan: 'free', status: 'inactive', trialEnd: null });
+    let user = await User.findOne({ email });
+    if (!user) {
+      const crypto = require('crypto');
+      const trialDays = 3;
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + trialDays);
+      
+      user = new User({ 
+        email, 
+        password: crypto.randomBytes(8).toString('hex'),
+        plan: 'trial',
+        subscriptionStatus: 'active',
+        trialEnd
+      });
+      await user.save();
+    }
 
     let plan = user.plan || (user.isPro ? 'pro' : 'free');
     const status = (user.subscriptionStatus === 'active') ? 'active' : 'inactive';
