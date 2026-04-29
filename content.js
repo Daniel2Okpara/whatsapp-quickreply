@@ -1982,16 +1982,16 @@
 
       const modal = document.createElement('div');
       modal.className = 'onboarding-modal';
-      const onboardIconUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon128.png') : 'icons/icon128.png';
+      const onboardIconUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/lightning.png') : 'icons/lightning.png';
       modal.innerHTML = `
         <div class="onboarding-header">
-          <img src="${onboardIconUrl}" alt="WA QuickReply" style="width:48px;height:48px;border-radius:12px;object-fit:cover;flex-shrink:0;" />
+          <img src="${onboardIconUrl}" alt="WA QuickReply" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;" />
           <div>
             <div class="onboarding-title">WA QuickReply</div>
             <div style="font-size: 12px; color: #94a3b8;">Activate to get started</div>
           </div>
         </div>
-        <div class="onboarding-subtitle">Enter your email to unlock templates, AI replies, and improve feature.</div>
+        <div class="onboarding-subtitle">Enter your email to unlock templates, AI replies.</div>
         <div class="onboarding-input-group">
           <input type="email" class="onboarding-input" id="onboard-email" placeholder="you@example.com" autocomplete="email">
           <div class="onboarding-error" id="onboard-error"></div>
@@ -2016,8 +2016,16 @@
         btn.disabled = true;
         btn.textContent = 'Activating...';
         chrome.storage.local.set({ email: val }, () => {
-          initializeExtension();
-          setTimeout(() => hostEl.remove(), 300);
+          btn.textContent = 'Success! ✅';
+          btn.style.background = '#059669';
+          
+          // Small delay for visual confirmation before initializing and removing
+          setTimeout(() => {
+            initializeExtension();
+            if (hostEl && hostEl.parentNode) {
+              hostEl.remove();
+            }
+          }, 1200);
         });
       });
 
