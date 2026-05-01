@@ -63,6 +63,16 @@ exports.simulateWebhook = async (req, res) => {
       user.plan = 'pro';
       user.subscriptionStatus = 'active';
       user.subscriptionId = subscription_id || `manual_${Date.now()}`;
+    } else if (alert_name === 'subscription_activated' || alert_name === 'trial') {
+      user.plan = 'trial';
+      user.trialUsed = true;
+      user.subscriptionStatus = 'active';
+      user.subscriptionId = subscription_id || `manual_${Date.now()}`;
+      
+      const trialEnds = new Date();
+      trialEnds.setDate(trialEnds.getDate() + 3);
+      user.trialEndsAt = trialEnds;
+      user.trialEnd = trialEnds;
     } else if (alert_name === 'subscription_cancelled' || alert_name === 'cancel' || alert_name === 'downgrade') {
       user.plan = 'free';
       user.subscriptionStatus = 'cancelled';
