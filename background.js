@@ -71,7 +71,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'GET_PLAN_STATE') {
-    storageGet(['plan', 'usage', 'trialEnd']).then(data => {
+    storageGet(['plan', 'usage', 'trialEnd', 'trialUsed', 'trialEndsAt']).then(data => {
       safeSendResponse(sendResponse, resetUsageIfNeeded(data));
     });
     return true;
@@ -184,19 +184,21 @@ function canUseFeature(data, feature) {
     return true;
   }
 
-  // Trial logic
+  // Trial logic: 100/day
   if (data.plan === 'trial') {
-    if (data.trialEnd && new Date() > new Date(data.trialEnd)) {
+    const trialEnd = data.trialEndsAt || data.trialEnd;
+    if (trialEnd && new Date() > new Date(trialEnd)) {
       storageSet({ plan: 'free' });
       return false;
     }
+    const totalTrialActions = (usage.trial_aiReply || usage.free_aiReply || 0) + (usage.trial_improve || usage.free_improve || 0);
+    if (totalTrialActions >= 100) return false;
     return true;
   }
 
   // Free limits: 10 per day per feature
   if (data.plan === 'free' || !data.plan) {
     const freeKey = `free_${feature}`;
-    // Fallback for legacy keys if newly downgraded
     const currentFreeUsage = (usage[freeKey] || 0) + (usage[feature] && !usage.pro_aiReply ? usage[feature] : 0);
     if (currentFreeUsage >= 10) return false;
   }
@@ -298,7 +300,9 @@ async function refreshSubscription() {
         await storageSet({ 
           plan: body.plan || 'free', 
           subscriptionStatus: body.status || 'inactive',
-          trialEnd: body.trialEnd || null
+          trialEnd: body.trialEnd || null,
+          trialEndsAt: body.trialEnd || null,
+          trialUsed: body.trialUsed || false
         });
       }
     }

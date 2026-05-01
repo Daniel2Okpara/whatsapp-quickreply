@@ -611,6 +611,7 @@
         <div style='font-size: 13px; color: #555; margin-bottom: 4px;'>Generate smart responses instantly</div>
         <div style='font-size: 11px; color: #94a3b8; margin-bottom: 12px;'>Tone &amp; style controlled in ⚙️ Settings</div>
         <button class='waqr-btn' id='waqr-generate'>✨ Generate AI Reply</button>
+        <button class='waqr-btn' id='waqr-start-trial' style='display:none; background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%); margin-top: 8px;'>🎁 Start 3-Day Free Trial</button>
         <div id='waqr-suggestions' style='margin-top: 12px;'></div>
       </div>
     </div>
@@ -1549,6 +1550,12 @@
     shadow.getElementById('waqr-trial-badge').style.display = isTrial ? 'inline-block' : 'none';
     shadow.getElementById('waqr-upgrade-link').style.display = isPro ? 'none' : 'inline-block';
 
+    // Trial Button Logic
+    const trialBtn = shadow.getElementById('waqr-start-trial');
+    if (trialBtn) {
+      trialBtn.style.display = (isFree && !state.trialUsed) ? 'block' : 'none';
+    }
+
     // Theme
     panel.classList.toggle('pro-theme', isPro);
     panel.classList.toggle('trial-theme', isTrial);
@@ -1591,6 +1598,22 @@
   shadow.getElementById('waqr-modal-upgrade').addEventListener('click', () => {
     window.open('https://wa-quickreply-landing.vercel.app/#pricing', '_blank');
     modalOverlay.classList.remove('active');
+  });
+
+  // Trial Button Wire
+  shadow.getElementById('waqr-start-trial').addEventListener('click', () => {
+    chrome.storage.local.get(['email'], (res) => {
+      const email = res.email;
+      if (!email) {
+        showToast('⚠️ Please activate with your email first.');
+        return;
+      }
+      // Paddle Checkout URL with email prefilled
+      // Note: In a real app, this should link to your checkout page or trigger Paddle.js
+      const checkoutUrl = `https://wa-quickreply-landing.vercel.app/#pricing?email=${encodeURIComponent(email)}&trial=true`;
+      window.open(checkoutUrl, '_blank');
+      showToast('🚀 Opening secure checkout...');
+    });
   });
 
   // Call sync on open
