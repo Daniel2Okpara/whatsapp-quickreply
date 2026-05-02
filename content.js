@@ -2005,10 +2005,10 @@
 
       const modal = document.createElement('div');
       modal.className = 'onboarding-modal';
-      const onboardIconUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/lightning.png') : 'icons/lightning.png';
+      const onboardIconUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon128.png') : 'icons/icon128.png';
       modal.innerHTML = `
         <div class="onboarding-header">
-          <img src="${onboardIconUrl}" alt="WA QuickReply" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;" />
+          <img src="${onboardIconUrl}" alt="WA QuickReply" style="width:48px;height:48px;border-radius:12px;object-fit:cover;flex-shrink:0;" />
           <div>
             <div class="onboarding-title">WA QuickReply</div>
             <div style="font-size: 12px; color: #94a3b8;">Activate to get started</div>
