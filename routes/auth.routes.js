@@ -7,6 +7,7 @@ const handshakeController = require('../controllers/handshake.controller');
 router.post('/register', register);
 router.post('/login', login);
 router.get('/profile', protect, getProfile);
+router.post('/refresh', require('../controllers/auth.controller').refresh);
 
 // Handshake endpoints for landing -> extension connect
 router.post('/handshake/create', handshakeController.createHandshake);

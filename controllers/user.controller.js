@@ -1,4 +1,8 @@
 const User = require('../models/user.model');
+const NodeCache = require('node-cache');
+const userCache = new NodeCache({ stdTTL: 120 }); // 2 minute TTL
+
+exports.userCache = userCache;
 
 exports.getUserStatus = async (req, res) => {
   try {
@@ -6,6 +10,15 @@ exports.getUserStatus = async (req, res) => {
     if (!email) return res.status(400).json({ error: 'email_required' });
 
     let user = await User.findOne({ email });
+    let cachedUser = userCache.get(email);
+    
+    if (cachedUser) {
+      // Re-evaluate trial expiry just in case
+      if (cachedUser.plan === 'trial' && cachedUser.trialEnd && new Date() > new Date(cachedUser.trialEnd)) {
+        cachedUser.plan = 'free';
+      }
+      return res.json(cachedUser);
+    }
     if (!user) {
       const crypto = require('crypto');
       user = new User({ 
@@ -27,13 +40,16 @@ exports.getUserStatus = async (req, res) => {
       plan = 'free';
     }
 
-    return res.json({ 
+    const result = { 
       plan, 
       status, 
       trialEnd,
       trialUsed: user.trialUsed || false,
       totalCreditsUsed: user.creditsUsed || 0
-    });
+    };
+    
+    userCache.set(email, result);
+    return res.json(result);
   } catch (err) {
     console.error('[UserStatus] error', err);
     return res.status(500).json({ error: 'server_error' });

@@ -1,20 +1,38 @@
 const OpenAI = require('openai');
 const fs = require('fs');
 
+const enforceDailyLimit = async (user) => {
+  if (!user) return true;
+  const now = new Date();
+  if (!user.lastUsageReset || user.lastUsageReset.getDate() !== now.getDate() || user.lastUsageReset.getMonth() !== now.getMonth() || user.lastUsageReset.getFullYear() !== now.getFullYear()) {
+    user.dailyUsage = 0;
+    user.lastUsageReset = now;
+  }
+  let limit = 10;
+  if (user.plan === 'pro') limit = 200;
+  else if (user.plan === 'trial') limit = 100;
+  
+  if (user.dailyUsage >= limit) return false;
+  
+  user.dailyUsage += 1;
+  user.creditsUsed += 1;
+  await user.save();
+  return true;
+};
+
+
 exports.transcribeAudio = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Audio file required' });
     }
 
-    // 1b. Check User Limits (Free Tier = 15 calls)
-    if (req.user && !req.user.isPro) {
-      if (req.user.creditsUsed >= 15) {
+    if (req.user) {
+      const allowed = await enforceDailyLimit(req.user);
+      if (!allowed) {
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        return res.status(403).json({ error: 'Monthly AI limit reached (15/15). Please upgrade to Professional.', limitReached: true });
+        return res.status(403).json({ error: 'Daily AI limit reached. Upgrade to Pro for more.', limitReached: true });
       }
-      req.user.creditsUsed += 1;
-      await req.user.save();
     }
 
     const effectiveApiKey = req.body.apiKey || process.env.OPENAI_API_KEY;
@@ -51,13 +69,11 @@ exports.generateReplies = async (req, res) => {
     return res.status(500).json({ error: 'AI service unavailable (Missing API Key)' });
   }
 
-  // 1b. Check User Limits (Free Tier = 15 calls)
-  if (req.user && !req.user.isPro) {
-    if (req.user.creditsUsed >= 15) {
-      return res.status(403).json({ error: 'Monthly AI limit reached (15/15). Please upgrade to Professional.', limitReached: true });
+  if (req.user) {
+    const allowed = await enforceDailyLimit(req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Daily AI limit reached. Upgrade to Pro for more.', limitReached: true });
     }
-    req.user.creditsUsed += 1;
-    await req.user.save();
   }
 
   const openai = new OpenAI({ apiKey: effectiveApiKey });
@@ -150,13 +166,11 @@ exports.improveMessage = async (req, res) => {
     return res.status(500).json({ error: 'AI service unavailable (Missing API Key)' });
   }
 
-  // 1b. Check User Limits (Free Tier = 15 calls)
-  if (req.user && !req.user.isPro) {
-    if (req.user.creditsUsed >= 15) {
-      return res.status(403).json({ error: 'Monthly AI limit reached (15/15). Please upgrade to Professional.', limitReached: true });
+  if (req.user) {
+    const allowed = await enforceDailyLimit(req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Daily AI limit reached. Upgrade to Pro for more.', limitReached: true });
     }
-    req.user.creditsUsed += 1;
-    await req.user.save();
   }
 
   const openai = new OpenAI({ apiKey: effectiveApiKey });
@@ -223,13 +237,11 @@ exports.aiReply = async (req, res) => {
 
     const openai = new OpenAI({ apiKey: effectiveApiKey });
 
-    // 1b. Check User Limits (Free Tier = 15 calls)
-    if (req.user && !req.user.isPro) {
-      if (req.user.creditsUsed >= 15) {
-        return res.status(403).json({ error: 'Monthly AI limit reached (15/15). Please upgrade to Professional.', limitReached: true });
+    if (req.user) {
+      const allowed = await enforceDailyLimit(req.user);
+      if (!allowed) {
+        return res.status(403).json({ error: 'Daily AI limit reached. Upgrade to Pro for more.', limitReached: true });
       }
-      req.user.creditsUsed += 1;
-      await req.user.save();
     }
 
     const systemPrompt = `You are replying as the owner of this WhatsApp account.
@@ -316,5 +328,24 @@ exports.aiImprove = async (req, res) => {
   } catch (err) {
     console.error('Improve Error:', err?.message || err);
     return res.status(500).json({ error: 'Improve failed' });
+  }
+};
+
+exports.submitFeedback = async (req, res) => {
+  try {
+    const { suggestion, feedback } = req.body;
+    if (!suggestion || !feedback) return res.status(400).json({ error: 'Missing feedback data' });
+
+    console.log(`[AI Feedback] ${feedback.toUpperCase()}: ${suggestion.substring(0, 50)}...`);
+    
+    // Using the lightweight logger we created earlier
+    const logger = require('../services/logger.service');
+    if (logger) {
+      await logger.logError('ai_feedback', `Feedback: ${feedback}`, { suggestion }, req.user?.email);
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to record feedback' });
   }
 };

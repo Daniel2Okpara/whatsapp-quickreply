@@ -51,6 +51,14 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  dailyUsage: {
+    type: Number,
+    default: 0
+  },
+  lastUsageReset: {
+    type: Date,
+    default: Date.now
+  },
   templates: [
     {
       _id: { type: String },

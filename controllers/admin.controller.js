@@ -90,6 +90,9 @@ exports.simulateWebhook = async (req, res) => {
         subscriptionId: user.subscriptionId, 
         subscriptionStatus: user.subscriptionStatus 
       });
+      
+      const { userCache } = require('./user.controller');
+      if (userCache) userCache.del(user.email);
     } catch (e) {}
 
     return res.json({ success: true, user });
@@ -125,9 +128,12 @@ exports.promoteUser = async (req, res) => {
   if (!email || !secret) return res.status(400).json({ error: 'Email and secret required' });
   
   const adminSecret = process.env.ADMIN_SECRET;
-  const rescueSecret = 'WA-Admin-Rescue-99';
+  if (!adminSecret) {
+    console.error('[Admin Security] ADMIN_SECRET not configured in environment variables.');
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
   
-  if (secret === adminSecret || secret === rescueSecret) {
+  if (secret === adminSecret) {
     try {
       const user = await User.findOneAndUpdate({ email: email.toLowerCase() }, { isAdmin: true }, { new: true });
       if (!user) return res.status(404).json({ error: 'User not found' });

@@ -9,12 +9,34 @@ const authRoutes = require('./routes/auth.routes');
 const paddleRoutes = require('./routes/paddle.routes');
 const userRoutes = require('./routes/user.routes');
 
+const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many auth requests, please try again later.' }
+});
+
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  message: { error: 'Too many AI requests, please try again later.' }
+});
+
 // Middleware
+app.use(cookieParser());
 app.use(cors({
-  origin: '*',
+  origin: function (origin, callback) {
+    if (process.env.NODE_ENV !== 'production' || !origin) return callback(null, true);
+    if (origin.startsWith('chrome-extension://') || origin.includes('vercel.app') || origin.includes('waquickreply')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -37,8 +59,8 @@ app.post('/webhook/paddle', express.raw({ type: '*/*' }), (req, res, next) => {
 app.use(express.json());
 
 // Mount auth and API routes after JSON body parser
-app.use('/auth', authRoutes);
-app.use('/', aiRoutes);
+app.use('/auth', authLimiter, authRoutes);
+app.use('/', aiLimiter, aiRoutes);
 app.use('/', userRoutes);
 
 // Admin routes (protected by admin secret header)

@@ -83,6 +83,9 @@ exports.processPaddlePayload = async (body, raw) => {
   // Notify SSE clients connected for this email
   try {
     eventsService.notifyEmail(email, { email, plan: user.plan, subscriptionId: user.subscriptionId, subscriptionStatus: user.subscriptionStatus });
+    
+    const { userCache } = require('./user.controller');
+    if (userCache) userCache.del(email);
   } catch (e) {}
 
   return { status: 'processed', user };
@@ -99,12 +102,15 @@ exports.handleWebhook = async (req, res) => {
   }
 
   // Verify webhook using HMAC secret (Paddle Billing)
-  if (process.env.PADDLE_WEBHOOK_SECRET) {
-    const ok = verifyWebhookHmac(req);
-    if (!ok) {
-      console.warn('[Paddle] Webhook signature verification failed');
-      return res.status(400).send('invalid signature');
-    }
+  if (!process.env.PADDLE_WEBHOOK_SECRET) {
+    console.error('[Paddle Security] PADDLE_WEBHOOK_SECRET is missing. Rejecting webhook.');
+    return res.status(500).send('Server configuration error');
+  }
+
+  const ok = verifyWebhookHmac(req);
+  if (!ok) {
+    console.warn('[Paddle Security] Webhook signature verification failed. Rejecting.');
+    return res.status(400).send('invalid signature');
   }
 
   try {

@@ -12,5 +12,6 @@ router.post('/transcribe', upload.single('audio'), aiController.transcribeAudio)
 // Simpler compatibility endpoints requested by extension clients
 router.post('/ai-reply', aiController.aiReply);
 router.post('/ai-improve', aiController.aiImprove);
+router.post('/ai-feedback', aiController.submitFeedback);
 
 module.exports = router;
