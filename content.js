@@ -13,11 +13,17 @@
   // ============================================================================
   function isContextValid() {
     if (!chrome.runtime?.id) {
-
-      // Optionally show a subtle UI indicator
       return false;
     }
     return true;
+  }
+
+  function storageGet(keys, callback) {
+    chrome.runtime.sendMessage({ type: 'GET_STORAGE', keys }, callback);
+  }
+  
+  function storageSet(obj, callback) {
+    chrome.runtime.sendMessage({ type: 'SET_STORAGE', obj }, callback);
   }
 
   // ============================================================================
@@ -34,7 +40,7 @@
   // SSE: connect to backend for real-time subscription updates
   (function setupSSE() {
     const BACKEND_URL = 'https://wa-quickreply-server.onrender.com';
-    chrome.storage.local.get(['email'], (r) => {
+    storageGet(['email'], (r) => {
       const email = r && r.email;
       if (!email) return;
       try {
@@ -43,7 +49,7 @@
         es.addEventListener('subscription_update', (ev) => {
           try {
             const data = JSON.parse(ev.data || '{}');
-            chrome.storage.local.set({ subscription: data }, () => {
+            storageSet({ subscription: data }, () => {
               applyProUI(); // re-apply Pro UI immediately
             });
           } catch (e) {
@@ -689,7 +695,7 @@
 
   // Load saved settings into the panel UI
   function loadSettingsUI() {
-    chrome.storage.local.get(['waqrSettings', 'email'], (r) => {
+    storageGet(['waqrSettings', 'email'], (r) => {
       const s = r.waqrSettings || {};
       const emailDisplay = shadow.getElementById('waqr-email-display');
       if (emailDisplay) emailDisplay.textContent = r.email || '';
@@ -750,10 +756,10 @@
       const group = btn.dataset.group;
       settingsPanel.querySelectorAll(`[data-group="${group}"]`).forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      chrome.storage.local.get(['waqrSettings'], (r) => {
+      storageGet(['waqrSettings'], (r) => {
         const s = r.waqrSettings || {};
         s[group] = btn.dataset.value;
-        chrome.storage.local.set({ waqrSettings: s });
+        storageSet({ waqrSettings: s });
       });
     });
   });
@@ -762,10 +768,10 @@
   const fuToggle = shadow.getElementById('waqr-set-followup');
   if (fuToggle) {
     fuToggle.addEventListener('change', () => {
-      chrome.storage.local.get(['waqrSettings'], (r) => {
+      storageGet(['waqrSettings'], (r) => {
         const s = r.waqrSettings || {};
         s.followUp = fuToggle.checked ? 'auto' : 'disabled';
-        chrome.storage.local.set({ waqrSettings: s });
+        storageSet({ waqrSettings: s });
       });
     });
   }
@@ -774,10 +780,10 @@
   const learnToggle = shadow.getElementById('waqr-set-learning');
   if (learnToggle) {
     learnToggle.addEventListener('change', () => {
-      chrome.storage.local.get(['waqrSettings'], (r) => {
+      storageGet(['waqrSettings'], (r) => {
         const s = r.waqrSettings || {};
         s.styleLearning = learnToggle.checked ? 'on' : 'off';
-        chrome.storage.local.set({ waqrSettings: s });
+        storageSet({ waqrSettings: s });
       });
     });
   }
@@ -809,7 +815,7 @@
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) { changeErr.textContent = data.error || `Failed (${resp.status})`; changeErr.style.display = 'block'; return; }
-        chrome.storage.local.set({ email: nw }, () => {
+        storageSet({ email: nw }, () => {
           changeBox.style.display = 'none';
           settingsPanel.style.display = 'none';
           showToast('Email updated ✅');
@@ -826,7 +832,7 @@
 
   // Prefill upgrade link with stored email
   (function setEmailDisplayAndUpgrade() {
-    chrome.storage.local.get(['email'], (r) => {
+    storageGet(['email'], (r) => {
       const email = (r && r.email) ? r.email : null;
       const upgradeLink = shadow.querySelector('#waqr-upgrade-link');
       if (upgradeLink) {
@@ -849,7 +855,7 @@
     }
   }
 
-  chrome.storage.local.get(['subscription'], (res) => {
+  storageGet(['subscription'], (res) => {
     const sub = res && res.subscription ? res.subscription : {};
     const tier = (sub.tier || '').toLowerCase();
     const plan = (sub.plan || '').toLowerCase();
@@ -926,7 +932,7 @@
   }
 
   // Load saved position
-  chrome.storage.local.get(['fabPosition'], (result) => {
+  storageGet(['fabPosition'], (result) => {
     if (result.fabPosition) {
       fabPosition = result.fabPosition;
     }
@@ -994,7 +1000,7 @@
         }
 
         const query = match[1].toLowerCase();
-        chrome.storage.local.get(['templates'], (result) => {
+        storageGet(['templates'], (result) => {
            const templates = (result.templates || []).filter(t => 
               t.category.toLowerCase().includes(query) || 
               t.message.toLowerCase().includes(query)
@@ -1113,7 +1119,7 @@
         }
      }, 15000);
 
-     chrome.storage.local.get(['waqrSettings', 'plan'], (res) => {
+     storageGet(['waqrSettings', 'plan'], (res) => {
         const settings = res.waqrSettings || {};
         const isProOrTrial = res.plan === 'pro' || res.plan === 'trial';
         let styleProfile = null;
@@ -1223,7 +1229,7 @@
       isDragging = false;
       fab.classList.remove('dragging');
       if (didDrag) {
-        chrome.storage.local.set({ fabPosition });
+        storageSet({ fabPosition });
         // Don't reset didDrag here, so the click event can catch it and ignore it
       }
     }
@@ -1274,7 +1280,7 @@
 
   async function syncTemplatesToServer(templates) {
     if (!isContextValid()) return;
-    chrome.storage.local.get(['jwtToken'], (res) => {
+    storageGet(['jwtToken'], (res) => {
       if (!res.jwtToken) return;
       chrome.runtime.sendMessage({ 
         type: 'SYNC_TEMPLATES', 
@@ -1296,7 +1302,7 @@
           lastUsed: null
         }));
         if (mapped.length > 0) {
-          chrome.storage.local.set({ templates: mapped }, () => {
+          storageSet({ templates: mapped }, () => {
             loadTemplates();
           });
         }
@@ -1306,7 +1312,7 @@
 
   function loadTemplates(category = 'All') {
     if (!isContextValid()) return;
-    chrome.storage.local.get(['templates'], (result) => {
+    storageGet(['templates'], (result) => {
       const templates = result.templates || [];
       const list = shadow.getElementById('waqr-templates-list');
       const recent = shadow.getElementById('waqr-recent-templates');
@@ -1349,7 +1355,7 @@
           template.usedCount = (template.usedCount || 0) + 1;
           template.lastUsed = Date.now();
           const updated = templates.map(t => t.id === template.id ? template : t);
-          chrome.storage.local.set({ templates: updated });
+          storageSet({ templates: updated });
         });
 
         div.querySelector('[data-action="edit-template"]').addEventListener('click', (e) => {
@@ -1363,7 +1369,7 @@
         div.querySelector('[data-action="delete-template"]').addEventListener('click', (e) => {
           e.stopPropagation();
           const filtered = templates.filter(t => t.id !== template.id);
-          chrome.storage.local.set({ templates: filtered }, () => {
+          storageSet({ templates: filtered }, () => {
             loadTemplates(category);
             showToast('Template removed');
             syncTemplatesToServer(filtered);
@@ -1418,13 +1424,13 @@
 
     const editingId = shadow.getElementById('waqr-add-template').dataset.editing;
 
-    chrome.storage.local.get(['templates'], (result) => {
+    storageGet(['templates'], (result) => {
       const templates = result.templates || [];
       if (editingId) {
         const updated = templates.map(t =>
           t.id === editingId ? { ...t, name: autoName, message, category } : t
         );
-        chrome.storage.local.set({ templates: updated }, () => {
+        storageSet({ templates: updated }, () => {
           shadow.getElementById('waqr-template-message').value = '';
           shadow.getElementById('waqr-add-template').textContent = '+ Add Template';
           delete shadow.getElementById('waqr-add-template').dataset.editing;
@@ -1447,7 +1453,7 @@
           usedCount: 0,
           lastUsed: null
         });
-        chrome.storage.local.set({ templates }, () => {
+        storageSet({ templates }, () => {
           shadow.getElementById('waqr-template-message').value = '';
 
           // Switch UI tab automatically to the category saved
@@ -1602,7 +1608,7 @@
 
   // Trial Button Wire
   shadow.getElementById('waqr-start-trial').addEventListener('click', () => {
-    chrome.storage.local.get(['email'], (res) => {
+    storageGet(['email'], (res) => {
       const email = res.email;
       if (!email) {
         showToast('⚠️ Please activate with your email first.');
@@ -1642,7 +1648,7 @@
     genBtn.innerHTML = '✨ Thinking...';
     genBtn.disabled = true;
 
-    chrome.storage.local.get(['waqrSettings', 'plan'], (res) => {
+    storageGet(['waqrSettings', 'plan'], (res) => {
       const settings = res.waqrSettings || {};
       const isProOrTrial = res.plan === 'pro' || res.plan === 'trial';
       let styleProfile = null;
@@ -1689,15 +1695,31 @@
       
       div.innerHTML = `
         <div style="font-size:13px; line-height:1.4; color:#121212;">${suggestion}</div>
-        <button class="waqr-btn secondary" style="margin-bottom:0; display:flex; align-items:center; justify-content:center; gap:6px; font-size:12px; padding:6px;">
-          <span>📋</span> [ Insert ]
-        </button>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <button class="waqr-btn secondary insert-btn" style="margin-bottom:0; display:flex; align-items:center; justify-content:center; gap:6px; font-size:12px; padding:6px; flex:1;">
+            <span>📋</span> [ Insert ]
+          </button>
+          <div style="display:flex; gap:4px; margin-left:8px;">
+            <button class="waqr-btn secondary feedback-btn" data-fb="positive" style="padding:4px 8px; margin:0; font-size:12px; border-radius:4px;" title="Helpful">👍</button>
+            <button class="waqr-btn secondary feedback-btn" data-fb="negative" style="padding:4px 8px; margin:0; font-size:12px; border-radius:4px;" title="Not Helpful">👎</button>
+          </div>
+        </div>
       `;
 
-      div.querySelector('button').addEventListener('click', (e) => {
+      div.querySelector('.insert-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         insertMessage(suggestion);
         showToast('✅ Inserted!');
+      });
+
+      div.querySelectorAll('.feedback-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const feedback = btn.getAttribute('data-fb');
+          chrome.runtime.sendMessage({ type: 'SUBMIT_FEEDBACK', suggestion, feedback });
+          
+          btn.parentElement.innerHTML = '<span style="font-size:10px; color:#10b981;">Thanks!</span>';
+        });
       });
 
       div.addEventListener('click', () => insertMessage(suggestion));
@@ -1978,7 +2000,7 @@
     syncPlanState();
   }
 
-  chrome.storage.local.get(['email'], (res) => {
+  storageGet(['email'], (res) => {
     const email = res && res.email;
     if (!email) {
       const hostEl = document.createElement('div');
@@ -2038,7 +2060,7 @@
         }
         btn.disabled = true;
         btn.textContent = 'Activating...';
-        chrome.storage.local.set({ email: val }, () => {
+        storageSet({ email: val }, () => {
           btn.textContent = 'Success! ✅';
           btn.style.background = '#059669';
           

@@ -27,6 +27,37 @@ async function fetchWithTimeout(url, options = {}, timeout = 20000) {
   }
 }
 
+async function authenticatedFetch(url, options = {}) {
+  const data = await storageGet(['jwtToken']);
+  if (!options.headers) options.headers = {};
+  if (data.jwtToken) options.headers['Authorization'] = `Bearer ${data.jwtToken}`;
+  
+  // Extension cookies are sent automatically to matching domains if properly permitted,
+  // but we must ensure credentials are included for cross-origin requests.
+  options.credentials = 'include'; 
+
+  let res = await fetchWithTimeout(url, options);
+
+  if (res.status === 401 || res.status === 403) {
+    try {
+      const refreshRes = await fetchWithTimeout(`${BACKEND_URL}/auth/refresh`, { method: 'POST', credentials: 'include' });
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json();
+        if (refreshData.accessToken) {
+          await storageSet({ jwtToken: refreshData.accessToken });
+          options.headers['Authorization'] = `Bearer ${refreshData.accessToken}`;
+          res = await fetchWithTimeout(url, options);
+        }
+      } else {
+        await storageSet({ jwtToken: null });
+      }
+    } catch (err) {
+      console.error('Auto-refresh failed', err);
+    }
+  }
+  return res;
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   // V11.0: Wake up the server on install/startup
   fetch(`${BACKEND_URL}/health`).catch(() => {});
@@ -87,20 +118,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.type === 'GET_STORAGE') {
+    storageGet(request.keys).then(data => safeSendResponse(sendResponse, data));
+    return true;
+  }
+
+  if (request.type === 'SET_STORAGE') {
+    storageSet(request.obj).then(() => safeSendResponse(sendResponse, { success: true }));
+    return true;
+  }
+
+  if (request.type === 'SUBMIT_FEEDBACK') {
+    authenticatedFetch(`${BACKEND_URL}/ai-feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suggestion: request.suggestion, feedback: request.feedback })
+    }).catch(e => console.error('Feedback error', e));
+    return true;
+  }
+
   return false;
 });
 
 async function syncTemplates(templates) {
   try {
-    const data = await storageGet(['jwtToken']);
-    if (!data.jwtToken) return;
-
-    await fetch(`${BACKEND_URL}/auth/sync-templates`, {
+    await authenticatedFetch(`${BACKEND_URL}/auth/sync-templates`, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${data.jwtToken}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ templates })
     });
   } catch (err) {
@@ -110,12 +154,7 @@ async function syncTemplates(templates) {
 
 async function getTemplates() {
   try {
-    const data = await storageGet(['jwtToken']);
-    if (!data.jwtToken) return { templates: [] };
-
-    const resp = await fetch(`${BACKEND_URL}/auth/get-templates`, {
-      headers: { 'Authorization': `Bearer ${data.jwtToken}` }
-    });
+    const resp = await authenticatedFetch(`${BACKEND_URL}/auth/get-templates`);
     if (!resp.ok) return { templates: [] };
     return await resp.json();
   } catch (err) {
@@ -255,9 +294,9 @@ async function generateAiReply(context, personality, sendResponse) {
 
     // (Reference existing logic to ensure it doesn't deviate)
     const endpoint = `${BACKEND_URL}/ai-reply`;
-    const response = await fetchWithTimeout(endpoint, {
+    const response = await authenticatedFetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': data.jwtToken ? `Bearer ${data.jwtToken}` : '' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         ...context,
         apiKey: data.apiKey 
@@ -274,10 +313,10 @@ async function generateAiReply(context, personality, sendResponse) {
 
 async function improveMessage(payload, sendResponse) {
   try {
-    const data = await storageGet(['apiKey', 'jwtToken']);
-    const response = await fetchWithTimeout(`${BACKEND_URL}/improve-message`, {
+    const data = await storageGet(['apiKey']);
+    const response = await authenticatedFetch(`${BACKEND_URL}/improve-message`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': data.jwtToken ? `Bearer ${data.jwtToken}` : '' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...payload, apiKey: data.apiKey })
     });
     if (!response.ok) throw new Error('Improve failed');
