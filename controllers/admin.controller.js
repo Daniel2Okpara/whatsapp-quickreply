@@ -147,17 +147,24 @@ exports.promoteUser = async (req, res) => {
 
 exports.updateAdmin = async (req, res) => {
   try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ error: 'User context is missing' });
+    }
     const { email, password } = req.body;
     const user = await User.findById(req.user._id);
     
+    if (!user) {
+      return res.status(404).json({ error: 'Admin user not found in DB' });
+    }
+
     if (email) user.email = email;
-    if (password) user.password = password; // Pre-save hook in user model handles hashing
+    if (password) user.password = password;
     
     await user.save();
     return res.json({ success: true, message: 'Account updated successfully' });
   } catch (err) {
-    console.error('[Admin] updateAdmin error', err);
-    return res.status(500).json({ error: 'server_error' });
+    console.error('[Admin] updateAdmin error:', err);
+    return res.status(500).json({ error: 'server_error', details: err.message });
   }
 };
 

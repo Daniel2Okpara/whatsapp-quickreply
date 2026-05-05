@@ -38,7 +38,8 @@ app.use(cors({
     return callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // NOTE: We mount the JSON body parser after the raw webhook route to avoid
