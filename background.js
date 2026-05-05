@@ -299,7 +299,7 @@ async function generateAiReply(context, personality, sendResponse) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        messages: context,
+        ...context, // Spreading context which contains 'messages' array and other options
         personality,
         apiKey: data.apiKey 
       })
