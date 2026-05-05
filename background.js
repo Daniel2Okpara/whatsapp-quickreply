@@ -52,7 +52,8 @@ async function authenticatedFetch(url, options = {}) {
         await storageSet({ jwtToken: null });
       }
     } catch (err) {
-      console.error('Auto-refresh failed', err);
+      console.error('Auto-refresh failed or network error:', err);
+      throw err; // rethrow to be caught by the feature handler
     }
   }
   return res;
@@ -298,12 +299,16 @@ async function generateAiReply(context, personality, sendResponse) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        ...context,
+        messages: context,
+        personality,
         apiKey: data.apiKey 
       })
     });
 
-    if (!response.ok) throw new Error('AI failed');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `AI request failed (${response.status})`);
+    }
     const result = await response.json();
     sendResponse({ suggestion: result.reply });
   } catch (error) {
@@ -319,7 +324,10 @@ async function improveMessage(payload, sendResponse) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...payload, apiKey: data.apiKey })
     });
-    if (!response.ok) throw new Error('Improve failed');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Improve request failed (${response.status})`);
+    }
     const result = await response.json();
     sendResponse({ improvedText: result.improvedText });
   } catch (error) {

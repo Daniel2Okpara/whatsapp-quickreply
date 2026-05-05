@@ -9,7 +9,8 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://web.whatsapp.com/*"
+    "https://web.whatsapp.com/*",
+    "https://wa-quickreply-server.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js"
