@@ -5,8 +5,7 @@
   "description": "Smart AI replies and schedules for WhatsApp Web (Reliability Build).",
   "permissions": [
     "storage",
-    "activeTab",
-    "scripting"
+    "activeTab"
   ],
   "host_permissions": [
     "https://web.whatsapp.com/*",
