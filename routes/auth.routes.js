@@ -17,8 +17,8 @@ const handshakeController = require('../controllers/handshake.controller');
 
 router.post('/register', register);
 router.post('/login', login);
-router.get('/verify-email', verifyEmail);
 router.post('/resend-verification', resendVerification);
+router.get('/verify-email', verifyEmail);
 router.get('/profile', protect, getProfile);
 router.post('/refresh', refresh);
 
