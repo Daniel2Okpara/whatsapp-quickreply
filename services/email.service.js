@@ -38,8 +38,12 @@ const sendEmailChangeVerification = async (email, token) => {
   const verificationUrl = `${process.env.FRONTEND_URL}/confirm-email-change?token=${token}&email=${encodeURIComponent(email)}`;
   
   try {
+    if (!resend) {
+      console.error('[Email Service] Cannot send change verification: Resend not initialized');
+      return;
+    }
     await resend.emails.send({
-      from: 'WA QuickReply <security@resend.dev>',
+      from: 'WA QuickReply <onboarding@resend.dev>',
       to: email,
       subject: 'Confirm your new email address',
       html: `
