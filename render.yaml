@@ -11,9 +11,13 @@ services:
         value: "10000"
       - key: OPENAI_API_KEY
         sync: false
-      - key: MONGO_URI
+      - key: MONGODB_URI
+        sync: false
+      - key: RESEND_API_KEY
         sync: false
       - key: JWT_SECRET
+        sync: false
+      - key: REFRESH_TOKEN_SECRET
         sync: false
       - key: PADDLE_WEBHOOK_SECRET
         sync: false
