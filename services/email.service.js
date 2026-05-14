@@ -10,24 +10,26 @@ if (!resend) {
 const sendVerificationEmail = async (email, token) => {
   const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
   
-  try {
+    if (!resend) {
+      console.error('[Email Service] Cannot send verification email: Resend not initialized');
+      return;
+    }
+
     await resend.emails.send({
-      from: 'WA QuickReply <onboarding@resend.dev>', // Update with verified domain in production
+      from: 'WA QuickReply <onboarding@resend.dev>', 
       to: email,
       subject: 'Verify your WA QuickReply account',
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #25D366;">Welcome to WA QuickReply!</h2>
-          <p>Please click the button below to verify your email address and activate your account. This link will expire in 15 minutes.</p>
+          <h2 style="color: #25D366;">Welcome!</h2>
+          <p>Verify your account to start using WA QuickReply Pro.</p>
           <a href="${verificationUrl}" style="display: inline-block; background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">Verify Email</a>
-          <p style="margin-top: 20px; font-size: 12px; color: #777;">If the button doesn't work, copy and paste this link into your browser:</p>
-          <p style="font-size: 12px; color: #777;">${verificationUrl}</p>
         </div>
       `
     });
+    console.log(`[Email Service] Verification email sent to ${email}`);
   } catch (error) {
-    console.error('[Email Service] Error sending verification email', error);
-    throw new Error('Failed to send verification email');
+    console.error('[Email Service] Error sending verification email', error.message);
   }
 };
 

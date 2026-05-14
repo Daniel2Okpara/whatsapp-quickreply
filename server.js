@@ -4,6 +4,14 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL] Uncaught Exception:', err.message, err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const aiRoutes = require('./routes/ai.routes');
 const authRoutes = require('./routes/auth.routes');
 const paddleRoutes = require('./routes/paddle.routes');
