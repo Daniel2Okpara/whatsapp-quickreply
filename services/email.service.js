@@ -10,6 +10,7 @@ if (!resend) {
 const sendVerificationEmail = async (email, token) => {
   const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
   
+  try {
     if (!resend) {
       console.error('[Email Service] Cannot send verification email: Resend not initialized');
       return;
