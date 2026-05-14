@@ -185,6 +185,16 @@
     .waqr-sc-key { font-weight: 700; color: var(--waqr-primary); font-size: 12px; margin-right: 4px; }
     .waqr-sc-preview { color: #667; font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+    @keyframes waqr-pop {
+      0% { transform: scale(0.9); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes waqr-bounce {
+      0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+      40% {transform: translateY(-10px);}
+      60% {transform: translateY(-5px);}
+    }
+
     #waqr-panel {
       position: fixed;
       width: 340px;
@@ -623,6 +633,55 @@
     </div>
   `;
   shadow.appendChild(panel);
+
+  // ============================================================================
+  // ONBOARDING WALKTHROUGH
+  // ============================================================================
+  const onboardingEl = document.createElement('div');
+  onboardingEl.id = 'waqr-onboarding';
+  onboardingEl.style.cssText = `
+    display:none; position:fixed; top:0; left:0; width:100vw; height:100vh;
+    background:rgba(0,0,0,0.5); z-index:2000000; pointer-events:auto;
+    align-items:center; justify-content:center;
+  `;
+  onboardingEl.innerHTML = `
+    <div style="background:white; padding:24px; border-radius:16px; width:320px; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,0.3); animation: waqr-pop 0.3s ease-out;">
+      <div style="font-size:40px; margin-bottom:16px;">🚀</div>
+      <h2 style="font-size:20px; margin-bottom:8px; color:#1e293b;">Welcome to WA QuickReply!</h2>
+      <p style="font-size:14px; color:#64748b; margin-bottom:20px; line-height:1.5;">Start replying 10x faster with AI and custom templates. Try using shortcuts like <b>/price</b> or <b>/follow</b> in your chat!</p>
+      <button class="waqr-btn" id="waqr-onboarding-next" style="width:100%;">Got it, let's go!</button>
+    </div>
+  `;
+  shadow.appendChild(onboardingEl);
+
+  storageGet(['onboarding_seen'], (r) => {
+    if (!r || !r.onboarding_seen) {
+      setTimeout(() => { onboardingEl.style.display = 'flex'; }, 2000);
+    }
+  });
+
+  onboardingEl.querySelector('#waqr-onboarding-next').onclick = () => {
+    onboardingEl.style.display = 'none';
+    storageSet({ onboarding_seen: true });
+    // Show a small hint near the FAB
+    showHint(fab, 'Click here to open your panel 💬');
+  };
+
+  function showHint(target, text) {
+    const hint = document.createElement('div');
+    hint.style.cssText = `
+      position:fixed; background:#27a55e; color:white; padding:8px 12px;
+      border-radius:8px; font-size:12px; font-weight:600; z-index:2000001;
+      pointer-events:none; white-space:nowrap; box-shadow:0 4px 12px rgba(39,165,94,0.3);
+      animation: waqr-bounce 2s infinite;
+    `;
+    hint.textContent = text;
+    const rect = target.getBoundingClientRect();
+    hint.style.left = (rect.left - 20) + 'px';
+    hint.style.top = (rect.top - 40) + 'px';
+    shadow.appendChild(hint);
+    setTimeout(() => { hint.remove(); }, 6000);
+  }
 
   // ============================================================================
   // SETTINGS PANEL — 6-control design

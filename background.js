@@ -337,23 +337,25 @@ async function improveMessage(payload, sendResponse) {
 
 async function refreshSubscription() {
   try {
-    const data = await storageGet(['email']);
-    if (!data.email) return;
+    const data = await storageGet(['jwtToken']);
+    if (!data.jwtToken) return;
 
-    const resp = await fetch(`${BACKEND_URL}/user-status?email=${encodeURIComponent(data.email)}`);
+    const resp = await authenticatedFetch(`${BACKEND_URL}/auth/profile`);
     if (resp.ok) {
       const body = await resp.json();
       if (body) {
         await storageSet({ 
           plan: body.plan || 'free', 
-          subscriptionStatus: body.status || 'inactive',
-          trialEnd: body.trialEnd || null,
-          trialEndsAt: body.trialEnd || null,
-          trialUsed: body.trialUsed || false
+          isPro: !!body.isPro,
+          subscriptionStatus: body.subscriptionStatus || 'inactive',
+          trialEndsAt: body.trialEndsAt || null,
+          verified: body.verified || false
         });
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Subscription sync failed:', e);
+  }
 }
 
 chrome.runtime.onStartup.addListener(refreshSubscription);
