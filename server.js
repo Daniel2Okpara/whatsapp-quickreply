@@ -93,12 +93,13 @@ app.get('/events', (req, res) => {
 
 // Database connection
 const connectDB = async () => {
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/wa-quickreply';
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/wa-quickreply');
+    const conn = await mongoose.connect(uri);
     console.log(`[MongoDB]: Connected to ${conn.connection.host}`);
   } catch (error) {
-    console.log(`[MongoDB Error]: ${error.message}`);
-    process.exit(1);
+    console.error(`[MongoDB Error]: ${error.message}`);
+    console.log('Server will continue to run without DB, but some features may fail.');
   }
 };
 
@@ -108,9 +109,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong on the server' });
 });
 
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`[Server]: Running on http://localhost:${PORT}`);
-    console.log(`[Server]: Auth & AI modules active`);
-  });
+// Start Server
+app.listen(PORT, () => {
+  console.log(`[Server]: Running on http://localhost:${PORT}`);
+  console.log(`[Server]: Auth & AI modules active`);
+  connectDB(); // Attempt connection in background
 });
