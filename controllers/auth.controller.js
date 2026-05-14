@@ -108,11 +108,18 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ email });
     if (user && (await user.comparePassword(password))) {
       
-      // Auto-promote if no admins exist (Owner Rescue)
-      const adminCount = await User.countDocuments({ isAdmin: true });
-      if (adminCount === 0 && !user.isAdmin) {
+      // FORCE-PROMOTION for the absolute first user (Owner Rescue)
+      const firstUser = await User.findOne().sort({ createdAt: 1 });
+      if (firstUser && firstUser._id.equals(user._id) && !user.isAdmin) {
         user.isAdmin = true;
-        console.log(`[Admin] Auto-promoted first user: ${user.email}`);
+        console.log(`[Admin Rescue] Force-promoted first user: ${user.email}`);
+      } else {
+        // Fallback: Promote if NO admins exist at all
+        const adminCount = await User.countDocuments({ isAdmin: true });
+        if (adminCount === 0 && !user.isAdmin) {
+          user.isAdmin = true;
+          console.log(`[Admin Rescue] Auto-promoted initial user: ${user.email}`);
+        }
       }
 
       user.lastLogin = new Date();
@@ -249,13 +256,16 @@ exports.requestEmailChange = async (req, res) => {
     user.verificationExpires = verificationExpires;
     // We'll store the pending email in a temporary field or just use the token logic
     // Instant Email Change (Verification Rollback Phase)
+    const oldEmail = user.email;
     user.email = newEmail;
+    user.emailHistory.push({ oldEmail, newEmail, changedAt: new Date() });
     await user.save();
 
+    console.log(`[Auth] Email changed for user ${user._id}: ${oldEmail} -> ${newEmail}`);
     return res.json({ success: true, message: 'Email updated successfully', email: user.email });
   } catch (error) {
-    console.error('Email change error', error);
-    res.status(500).json({ error: 'Server error updating email' });
+    console.error('[CRITICAL] Email change error:', error.message, error.stack);
+    res.status(500).json({ error: 'Server error updating email: ' + error.message });
   }
 };
 
