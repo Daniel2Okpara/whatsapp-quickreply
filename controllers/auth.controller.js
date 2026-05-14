@@ -4,11 +4,11 @@ const crypto = require('crypto');
 const validator = require('validator');
 const emailService = require('../services/email.service');
 
-// Simple disposable email detection (can be expanded)
+// Simple disposable email detection
 const isDisposableEmail = (email) => {
-  const disposableDomains = ['yopmail.com', 'mailinator.com', 'tempmail.com', 'guerrillamail.com', '10minutemail.com'];
+  const disposableDomains = ['yopmail.com', 'mailinator.com', 'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'temp-mail.org'];
   const domain = email.split('@')[1];
-  return disposableDomains.includes(domain);
+  return disposableDomains.some(d => domain.includes(d));
 };
 
 // Helper to generate JWTs
@@ -36,61 +36,37 @@ const setRefreshTokenCookie = (res, token) => {
 exports.register = async (req, res) => {
   try {
     let { email, password } = req.body;
-    
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
     email = email.toLowerCase().trim();
-
-    if (!validator.isEmail(email)) {
-      return res.status(400).json({ error: 'Invalid email format' });
-    }
-
-    if (isDisposableEmail(email)) {
-      return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
-    }
+    if (!validator.isEmail(email)) return res.status(400).json({ error: 'Invalid email format' });
+    if (isDisposableEmail(email)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
 
     const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
+    if (userExists) return res.status(400).json({ error: 'User already exists' });
 
+    // Initial Admin Logic
     const adminCount = await User.countDocuments({ isAdmin: true });
     const isAdmin = adminCount === 0;
 
-    // Generate verification token
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
-
     const user = await User.create({ 
-      email, 
-      password, 
-      isAdmin,
+      email, password, isAdmin,
       verificationToken,
-      verificationExpires
+      verificationExpires: new Date(Date.now() + 15 * 60 * 1000)
     });
 
-    // Send verification email (Attempt in background, don't block)
-    try {
-      emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
-    } catch (err) {}
+    // Attempt verification email in background
+    emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
     
-    // Return tokens immediately for frictionless onboarding
     const accessToken = generateToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
     setRefreshTokenCookie(res, refreshToken);
 
     res.status(201).json({
       message: 'Registration successful',
-      _id: user._id,
-      email: user.email,
-      isPro: user.isPro,
-      isAdmin: user.isAdmin,
-      plan: user.plan,
-      verified: user.verified,
-      accessToken,
-      refreshToken
+      _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
+      accessToken, refreshToken
     });
   } catch (error) {
     console.error('Registration error', error);
@@ -102,23 +78,23 @@ exports.login = async (req, res) => {
   try {
     let { email, password } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
-    
     email = email.toLowerCase().trim();
 
     const user = await User.findOne({ email });
     if (user && (await user.comparePassword(password))) {
       
-      // FORCE-PROMOTION for the absolute first user (Owner Rescue)
-      const firstUser = await User.findOne().sort({ createdAt: 1 });
-      if (firstUser && firstUser._id.equals(user._id) && !user.isAdmin) {
-        user.isAdmin = true;
-        console.log(`[Admin Rescue] Force-promoted first user: ${user.email}`);
+      // OWNER RESCUE LOGIC
+      const adminEmail = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.toLowerCase() : null;
+      if (adminEmail && user.email === adminEmail) {
+        if (!user.isAdmin) {
+           user.isAdmin = true;
+           console.log(`[Rescue] Promoted owner: ${user.email}`);
+        }
       } else {
-        // Fallback: Promote if NO admins exist at all
         const adminCount = await User.countDocuments({ isAdmin: true });
         if (adminCount === 0 && !user.isAdmin) {
           user.isAdmin = true;
-          console.log(`[Admin Rescue] Auto-promoted initial user: ${user.email}`);
+          console.log(`[Rescue] Promoted initial admin: ${user.email}`);
         }
       }
 
@@ -130,14 +106,8 @@ exports.login = async (req, res) => {
       setRefreshTokenCookie(res, refreshToken);
 
       res.json({
-        _id: user._id,
-        email: user.email,
-        isPro: user.isPro,
-        isAdmin: user.isAdmin,
-        plan: user.plan,
-        verified: user.verified,
-        accessToken,
-        refreshToken
+        _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
+        accessToken, refreshToken
       });
     } else {
       res.status(401).json({ error: 'Invalid email or password' });
@@ -147,95 +117,10 @@ exports.login = async (req, res) => {
   }
 };
 
-exports.resendVerification = async (req, res) => {
-  try {
-    let { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email is required' });
-    email = email.toLowerCase().trim();
-
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.verified) return res.status(400).json({ error: 'Email already verified' });
-
-    // Generate new token
-    const token = crypto.randomBytes(32).toString('hex');
-    user.verificationToken = token;
-    user.verificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
-    await user.save();
-
-    await emailService.sendVerificationEmail(user.email, token);
-
-    res.json({ success: true, message: 'Verification email resent' });
-  } catch (err) {
-    console.error('Resend error', err);
-    res.status(500).json({ error: 'Failed to resend verification email' });
-  }
-};
-
-exports.verifyEmail = async (req, res) => {
-  try {
-    const { token, email } = req.query;
-    if (!token || !email) return res.status(400).json({ error: 'Token and email are required' });
-
-    const user = await User.findOne({ 
-      email: email.toLowerCase(),
-      verificationToken: token,
-      verificationExpires: { $gt: new Date() }
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired verification token' });
-    }
-
-    user.verified = true;
-    user.verificationToken = null;
-    user.verificationExpires = null;
-    await user.save();
-
-    const accessToken = generateToken(user._id);
-    const refreshToken = generateRefreshToken(user._id);
-    setRefreshTokenCookie(res, refreshToken);
-
-    res.json({
-      message: 'Email verified successfully',
-      _id: user._id,
-      email: user.email,
-      accessToken,
-      refreshToken
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Server error during verification' });
-  }
-};
-
-exports.resendVerification = async (req, res) => {
-  try {
-    let { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email is required' });
-    
-    email = email.toLowerCase().trim();
-    const user = await User.findOne({ email });
-
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.verified) return res.status(400).json({ error: 'Email already verified' });
-
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationExpires = new Date(Date.now() + 15 * 60 * 1000);
-
-    user.verificationToken = verificationToken;
-    user.verificationExpires = verificationExpires;
-    await user.save();
-
-    await emailService.sendVerificationEmail(email, verificationToken);
-
-    res.json({ message: 'Verification email sent' });
-  } catch (error) {
-    res.status(500).json({ error: 'Server error resending verification' });
-  }
-};
-
 exports.requestEmailChange = async (req, res) => {
   try {
+    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
+    
     let { newEmail } = req.body;
     if (!newEmail) return res.status(400).json({ error: 'New email is required' });
     
@@ -249,67 +134,39 @@ exports.requestEmailChange = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationExpires = new Date(Date.now() + 15 * 60 * 1000);
-
-    user.verificationToken = verificationToken;
-    user.verificationExpires = verificationExpires;
-    // We'll store the pending email in a temporary field or just use the token logic
-    // Instant Email Change (Verification Rollback Phase)
+    // Instant Email Change (Rollback Phase)
     const oldEmail = user.email;
     user.email = newEmail;
     user.emailHistory.push({ oldEmail, newEmail, changedAt: new Date() });
     await user.save();
 
-    console.log(`[Auth] Email changed for user ${user._id}: ${oldEmail} -> ${newEmail}`);
-    return res.json({ success: true, message: 'Email updated successfully', email: user.email });
+    console.log(`[Auth] Email updated: ${oldEmail} -> ${newEmail}`);
+    res.json({ success: true, message: 'Email updated successfully', email: user.email });
   } catch (error) {
-    console.error('[CRITICAL] Email change error:', error.message, error.stack);
+    console.error('[CRITICAL] Email change failure:', error);
     res.status(500).json({ error: 'Server error updating email: ' + error.message });
   }
 };
 
-exports.confirmEmailChange = async (req, res) => {
+exports.wipeMyAccount = async (req, res) => {
   try {
-    const { token, email } = req.query; // email here is the NEW email
-    if (!token || !email) return res.status(400).json({ error: 'Token and email are required' });
-
-    const user = await User.findOne({ 
-      verificationToken: token,
-      verificationExpires: { $gt: new Date() }
-    });
-
-    if (!user) return res.status(400).json({ error: 'Invalid or expired confirmation token' });
-
-    // Ensure email is not taken by someone else in the meantime
-    const emailTaken = await User.findOne({ email: email.toLowerCase() });
-    if (emailTaken) return res.status(400).json({ error: 'Target email is now in use' });
-
-    user.emailHistory.push({
-      oldEmail: user.email,
-      newEmail: email.toLowerCase(),
-      changedAt: new Date()
-    });
+    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
     
-    user.email = email.toLowerCase();
-    user.verificationToken = null;
-    user.verificationExpires = null;
-    await user.save();
+    const user = await User.findByIdAndDelete(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-    res.json({ message: 'Email updated successfully', email: user.email });
+    console.log(`[Wipe] Account deleted: ${user.email}`);
+    res.json({ success: true, message: 'Account wiped successfully. You can now register as a new user.' });
   } catch (error) {
-    res.status(500).json({ error: 'Server error confirming email change' });
+    res.status(500).json({ error: 'Failed to wipe account' });
   }
 };
 
 exports.getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    if (user) {
-      res.json(user);
-    } else {
-      res.status(404).json({ error: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
   } catch (error) {
     res.status(500).json({ error: 'Server error fetching profile' });
   }
@@ -320,7 +177,6 @@ exports.syncTemplates = async (req, res) => {
     const { templates } = req.body;
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    
     user.templates = templates;
     await user.save();
     res.json({ message: 'Templates synced', templates: user.templates });
@@ -346,15 +202,26 @@ exports.refresh = async (req, res) => {
 
     jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET || 'refresh_secret_production_key_2026', async (err, decoded) => {
       if (err) return res.status(403).json({ error: 'Invalid or expired refresh token' });
-      
       const user = await User.findById(decoded.id);
       if (!user) return res.status(404).json({ error: 'User not found' });
-
-      const newAccessToken = generateToken(user._id);
-      
-      res.json({ accessToken: newAccessToken });
+      res.json({ accessToken: generateToken(user._id) });
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error during refresh' });
+  }
+};
+
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { token, email } = req.query;
+    if (!token || !email) return res.status(400).json({ error: 'Token and email required' });
+    const user = await User.findOne({ email: email.toLowerCase(), verificationToken: token });
+    if (!user) return res.status(400).json({ error: 'Invalid verification' });
+    user.verified = true;
+    user.verificationToken = null;
+    await user.save();
+    res.json({ message: 'Verified successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Verification failed' });
   }
 };

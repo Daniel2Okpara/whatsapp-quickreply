@@ -10,7 +10,8 @@ const {
   confirmEmailChange,
   refresh,
   syncTemplates,
-  getTemplates
+  getTemplates,
+  wipeMyAccount
 } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const handshakeController = require('../controllers/handshake.controller');
@@ -25,6 +26,7 @@ router.post('/refresh', refresh);
 // Email Change Endpoints
 router.post('/request-email-change', protect, requestEmailChange);
 router.get('/confirm-email-change', confirmEmailChange);
+router.delete('/wipe-my-account', protect, wipeMyAccount);
 
 // Handshake endpoints for landing -> extension connect
 router.post('/handshake/create', handshakeController.createHandshake);
