@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const querystring = require('querystring');
+const mongoose = require('mongoose');
 const User = require('../models/user.model');
 const WebhookLog = require('../models/webhook.model');
 const eventsService = require('../services/events.service');
@@ -20,75 +21,142 @@ function verifyWebhookHmac(req) {
 }
 
 exports.processPaddlePayload = async (body, raw) => {
-  const alertName = body.alert_name || body.alert || '';
-  const email = (body.email || '').toLowerCase();
-  const subscriptionId = body.subscription_id || body.subscription || body.subscription_id_external || null;
-
-  // Deduplicate using raw body hash (unless it's an admin simulation)
+  const alertName = body.alert_name || body.alert || body.event_type || '';
+  const eventId = body.event_id || body.id || null;
   const rawHash = crypto.createHash('sha256').update(raw || '').digest('hex');
-  const existingLog = await WebhookLog.findOne({ hash: rawHash });
-  if (existingLog && !body.is_simulation) {
-    existingLog.attempts = (existingLog.attempts || 1) + 1;
-    existingLog.processedAt = new Date();
-    await existingLog.save();
+
+  // 1. Idempotency Check
+  let log = await WebhookLog.findOne({ $or: [{ eventId: eventId }, { hash: rawHash }] });
+  
+  if (log && log.isProcessed) {
+    console.log(`[Paddle] Duplicate event skipped: ${eventId || rawHash}`);
     return { status: 'duplicate' };
   }
 
-  // Create log entry
-  const log = new WebhookLog({ hash: rawHash, alertName: alertName, subscriptionId, rawBody: raw, status: 'processing' });
-  await log.save();
-
-  if (!email) {
-    log.status = 'ignored';
+  if (!log) {
+    log = new WebhookLog({ 
+      eventId, 
+      hash: rawHash, 
+      alertName, 
+      subscriptionId: body.subscription_id || body.subscription || null,
+      rawBody: raw, 
+      status: 'processing' 
+    });
     await log.save();
-    return { status: 'no-email' };
+  } else {
+    log.attempts += 1;
+    await log.save();
   }
 
-  let user = await User.findOne({ email });
+  // 2. Respond HTTP 200 immediately (handled by the caller handleWebhook)
+  // 3. Process Async
+  process.nextTick(() => {
+    executeWebhookLogic(body, log).catch(err => {
+      console.error('[Paddle] Async processing error:', err);
+    });
+  });
+
+  return { status: 'queued', eventId };
+};
+
+const executeWebhookLogic = async (body, log) => {
+  const alertName = body.alert_name || body.alert || body.event_type || '';
+  const email = (body.email || body.customer_email || body.data?.customer?.email || '').toLowerCase();
+  const subscriptionId = body.subscription_id || body.subscription || body.subscription_id_external || body.data?.id || null;
+  const paddleCustomerId = body.customer_id || body.user_id || body.data?.customer?.id || null;
+  
+  let userId = null;
+  if (body.data && body.data.custom_data && body.data.custom_data.userId) {
+    userId = body.data.custom_data.userId;
+  } else if (body.passthrough) {
+    try {
+      const passthrough = JSON.parse(body.passthrough);
+      if (passthrough.userId) userId = passthrough.userId;
+    } catch (e) {
+      if (mongoose.Types.ObjectId.isValid(body.passthrough)) userId = body.passthrough;
+    }
+  }
+
+  let user = null;
+  if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+    user = await User.findById(userId);
+  }
+  
+  if (!user && email) {
+    user = await User.findOne({ email });
+  }
+
   if (!user) {
-    // Create a user record for tracking
-    user = new User({ email, password: crypto.randomBytes(8).toString('hex') });
+    if (email) {
+      user = new User({ email, password: crypto.randomBytes(16).toString('hex'), verified: true });
+    } else {
+      log.status = 'ignored (no user)';
+      await log.save();
+      return;
+    }
   }
 
-  if (alertName.includes('subscription.created') || alertName.includes('subscription.activated') || alertName.includes('subscription_created') || alertName.includes('subscription_activated')) {
-    user.plan = 'trial';
-    user.trialUsed = true;
-    user.subscriptionId = subscriptionId;
-    user.subscriptionStatus = 'active';
-    
-    // Set trial end to 3 days from now
-    const trialEnds = new Date();
-    trialEnds.setDate(trialEnds.getDate() + 3);
-    user.trialEndsAt = trialEnds;
-    user.trialEnd = trialEnds; // Keeping legacy for safety
-  }
+  // Update IDs
+  if (paddleCustomerId) user.paddleCustomerId = paddleCustomerId;
+  if (subscriptionId) user.paddleSubscriptionId = subscriptionId;
 
-  if (alertName.includes('subscription.canceled') || alertName.includes('subscription_cancelled')) {
-    user.plan = 'free';
-    user.subscriptionStatus = 'canceled';
-    user.subscriptionId = subscriptionId || user.subscriptionId;
-  }
+  const isActivation = alertName.includes('subscription.created') || 
+                       alertName.includes('subscription.activated') || 
+                       alertName.includes('subscription_created') || 
+                       alertName.includes('subscription_activated');
+                       
+  const isCancellation = alertName.includes('subscription.canceled') || 
+                         alertName.includes('subscription_cancelled') ||
+                         alertName.includes('subscription.deleted');
 
-  if (alertName.includes('transaction.paid') || alertName.includes('subscription_payment_succeeded')) {
+  const isPayment = alertName.includes('transaction.paid') || 
+                    alertName.includes('subscription_payment_succeeded') ||
+                    alertName.includes('transaction.completed');
+
+  if (isActivation || isPayment) {
     user.plan = 'pro';
     user.subscriptionStatus = 'active';
-    user.subscriptionId = subscriptionId || user.subscriptionId;
+    user.isPro = true;
+  }
+
+  if (isCancellation) {
+    user.plan = 'free';
+    user.subscriptionStatus = 'cancelled';
+    user.isPro = false;
   }
 
   await user.save();
+  
   log.status = 'done';
+  log.isProcessed = true;
   log.processedAt = new Date();
   await log.save();
 
-  // Notify SSE clients connected for this email
+  // Notify SSE
   try {
-    eventsService.notifyEmail(email, { email, plan: user.plan, subscriptionId: user.subscriptionId, subscriptionStatus: user.subscriptionStatus });
-    
-    const { userCache } = require('./user.controller');
-    if (userCache) userCache.del(email);
+    const eventsService = require('../services/events.service');
+    eventsService.notifyEmail(user.email, { 
+      userId: user._id,
+      email: user.email, 
+      plan: user.plan, 
+      subscriptionStatus: user.subscriptionStatus,
+      isPro: user.isPro
+    });
   } catch (e) {}
+};
 
-  return { status: 'processed', user };
+exports.handleWebhook = async (req, res) => {
+  const raw = req.body.raw; // Assuming middleware provides raw body
+  const body = req.body;
+  
+  try {
+    const result = await exports.processPaddlePayload(body, JSON.stringify(body));
+    // Respond 200 immediately
+    return res.status(200).json({ status: 'ok', eventId: result.eventId });
+  } catch (err) {
+    console.error('[Paddle] Webhook Error:', err);
+    return res.status(200).json({ status: 'error_logged' }); // Still 200 for Paddle
+  }
 };
 
 exports.handleWebhook = async (req, res) => {

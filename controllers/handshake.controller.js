@@ -1,6 +1,20 @@
 const crypto = require('crypto');
 const Handshake = require('../models/handshake.model');
 const User = require('../models/user.model');
+const jwt = require('jsonwebtoken');
+
+// Reuse auth logic helpers or replicate for brevity if small
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET || 'super_secret_production_key_2026', {
+    expiresIn: '15m'
+  });
+};
+
+const generateRefreshToken = (id) => {
+  return jwt.sign({ id }, process.env.REFRESH_TOKEN_SECRET || 'refresh_secret_production_key_2026', {
+    expiresIn: '7d'
+  });
+};
 
 function genToken(len = 8) {
   return crypto.randomBytes(Math.max(4, len)).toString('hex').slice(0, len);
@@ -37,11 +51,25 @@ exports.consumeHandshake = async (req, res) => {
     // Ensure user exists
     let user = await User.findOne({ email: rec.email });
     if (!user) {
-      user = new User({ email: rec.email, password: crypto.randomBytes(8).toString('hex') });
+      user = new User({ 
+        email: rec.email, 
+        password: crypto.randomBytes(16).toString('hex'),
+        verified: true // Handshake from trusted landing page implies verification
+      });
       await user.save();
     }
 
-    return res.json({ email: rec.email });
+    const accessToken = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    return res.json({ 
+      _id: user._id,
+      email: user.email,
+      plan: user.plan,
+      isPro: user.isPro,
+      accessToken,
+      refreshToken
+    });
   } catch (err) {
     console.error('[Handshake] consume error', err);
     return res.status(500).json({ error: 'server_error' });

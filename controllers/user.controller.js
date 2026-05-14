@@ -12,39 +12,34 @@ exports.getUserStatus = async (req, res) => {
     let user = await User.findOne({ email });
     let cachedUser = userCache.get(email);
     
-    if (cachedUser) {
-      // Re-evaluate trial expiry just in case
-      if (cachedUser.plan === 'trial' && cachedUser.trialEnd && new Date() > new Date(cachedUser.trialEnd)) {
-        cachedUser.plan = 'free';
-      }
-      return res.json(cachedUser);
-    }
+    if (cachedUser) return res.json(cachedUser);
+
     if (!user) {
-      const crypto = require('crypto');
-      user = new User({ 
-        email, 
-        password: crypto.randomBytes(8).toString('hex'),
-        plan: 'free',
-        trialUsed: false,
-        subscriptionStatus: 'inactive'
+      // Return a guest status instead of creating a user automatically without verification
+      return res.json({ 
+        plan: 'free', 
+        status: 'inactive', 
+        verified: false,
+        requiresRegistration: true 
       });
-      await user.save();
     }
 
     let plan = user.plan || 'free';
     const status = (user.subscriptionStatus === 'active') ? 'active' : 'inactive';
     const trialEnd = user.trialEndsAt || user.trialEnd;
 
-    // Server-side trial expiry check
     if (plan === 'trial' && trialEnd && new Date() > new Date(trialEnd)) {
       plan = 'free';
     }
 
     const result = { 
+      _id: user._id,
+      email: user.email,
       plan, 
       status, 
-      trialEnd,
-      trialUsed: user.trialUsed || false,
+      isPro: user.isPro || plan === 'pro',
+      verified: user.verified,
+      trialEndsAt: trialEnd,
       totalCreditsUsed: user.creditsUsed || 0
     };
     
@@ -52,35 +47,6 @@ exports.getUserStatus = async (req, res) => {
     return res.json(result);
   } catch (err) {
     console.error('[UserStatus] error', err);
-    return res.status(500).json({ error: 'server_error' });
-  }
-};
-
-exports.updateEmail = async (req, res) => {
-  try {
-    const { currentEmail, newEmail } = req.body || {};
-    if (!currentEmail || !newEmail) return res.status(400).json({ error: 'current_and_new_email_required' });
-
-    const cur = String(currentEmail).toLowerCase().trim();
-    const nw = String(newEmail).toLowerCase().trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cur) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nw)) {
-      return res.status(400).json({ error: 'invalid_email' });
-    }
-
-    const User = require('../models/user.model');
-    const user = await User.findOne({ email: cur });
-    if (!user) return res.status(404).json({ error: 'user_not_found' });
-
-    // Prevent collision with existing account
-    const exists = await User.findOne({ email: nw });
-    if (exists) return res.status(400).json({ error: 'email_already_in_use' });
-
-    user.email = nw;
-    await user.save();
-
-    return res.json({ success: true, message: 'email_updated' });
-  } catch (err) {
-    console.error('[updateEmail] error', err);
     return res.status(500).json({ error: 'server_error' });
   }
 };

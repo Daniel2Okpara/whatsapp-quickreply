@@ -94,7 +94,7 @@ app.get('/events', (req, res) => {
 // Database connection
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/wa-quickreply');
+    const conn = await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/wa-quickreply');
     console.log(`[MongoDB]: Connected to ${conn.connection.host}`);
   } catch (error) {
     console.log(`[MongoDB Error]: ${error.message}`);

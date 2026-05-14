@@ -1,0 +1,55 @@
+const { Resend } = require('resend');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const sendVerificationEmail = async (email, token) => {
+  const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+  
+  try {
+    await resend.emails.send({
+      from: 'WA QuickReply <onboarding@resend.dev>', // Update with verified domain in production
+      to: email,
+      subject: 'Verify your WA QuickReply account',
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #25D366;">Welcome to WA QuickReply!</h2>
+          <p>Please click the button below to verify your email address and activate your account. This link will expire in 15 minutes.</p>
+          <a href="${verificationUrl}" style="display: inline-block; background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">Verify Email</a>
+          <p style="margin-top: 20px; font-size: 12px; color: #777;">If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="font-size: 12px; color: #777;">${verificationUrl}</p>
+        </div>
+      `
+    });
+  } catch (error) {
+    console.error('[Email Service] Error sending verification email', error);
+    throw new Error('Failed to send verification email');
+  }
+};
+
+const sendEmailChangeVerification = async (email, token) => {
+  const verificationUrl = `${process.env.FRONTEND_URL}/confirm-email-change?token=${token}&email=${encodeURIComponent(email)}`;
+  
+  try {
+    await resend.emails.send({
+      from: 'WA QuickReply <security@resend.dev>',
+      to: email,
+      subject: 'Confirm your new email address',
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #25D366;">Confirm Email Change</h2>
+          <p>You requested to change your email address for WA QuickReply. Please click the button below to confirm this change.</p>
+          <a href="${verificationUrl}" style="display: inline-block; background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">Confirm Email Change</a>
+          <p style="margin-top: 20px; font-size: 12px; color: #777;">If you did not request this change, you can safely ignore this email.</p>
+        </div>
+      `
+    });
+  } catch (error) {
+    console.error('[Email Service] Error sending email change verification', error);
+    throw new Error('Failed to send confirmation email');
+  }
+};
+
+module.exports = {
+  sendVerificationEmail,
+  sendEmailChangeVerification
+};

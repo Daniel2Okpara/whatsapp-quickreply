@@ -182,3 +182,31 @@ exports.listWebhookLogs = async (req, res) => {
     return res.status(500).json({ error: 'server_error' });
   }
 };
+
+exports.getFeedbackStats = async (req, res) => {
+  try {
+    const AIFeedback = require('../models/feedback.model');
+    const stats = await AIFeedback.aggregate([
+      {
+        $group: {
+          _id: '$feedback',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const formattedStats = {
+      up: stats.find(s => s._id === 'up')?.count || 0,
+      down: stats.find(s => s._id === 'down')?.count || 0
+    };
+
+    const recentFeedback = await AIFeedback.find()
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    return res.json({ stats: formattedStats, recentFeedback });
+  } catch (err) {
+    console.error('[Admin] getFeedbackStats error', err);
+    return res.status(500).json({ error: 'server_error' });
+  }
+};

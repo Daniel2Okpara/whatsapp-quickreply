@@ -7,11 +7,24 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
     trim: true,
-    lowercase: true
+    lowercase: true,
+    index: true
   },
   password: {
     type: String,
     required: true
+  },
+  verified: {
+    type: Boolean,
+    default: false
+  },
+  verificationToken: {
+    type: String,
+    default: null
+  },
+  verificationExpires: {
+    type: Date,
+    default: null
   },
   isPro: {
     type: Boolean,
@@ -30,18 +43,22 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  subscriptionId: {
+  paddleCustomerId: {
+    type: String,
+    default: null
+  },
+  paddleSubscriptionId: {
+    type: String,
+    default: null
+  },
+  subscriptionId: { // Keeping legacy for backward compatibility
     type: String,
     default: null
   },
   subscriptionStatus: {
     type: String,
-    enum: ['active', 'cancelled', 'inactive'],
+    enum: ['active', 'cancelled', 'inactive', 'past_due', 'paused'],
     default: 'inactive'
-  },
-  trialEnd: { // Keeping trialEnd as it was, but adding trialEndsAt for clarity if needed, or just reusing trialEnd.
-    type: Date,
-    default: null
   },
   trialEndsAt: {
     type: Date,
@@ -67,10 +84,19 @@ const userSchema = new mongoose.Schema({
       createdAt: { type: Date, default: Date.now }
     }
   ],
-  createdAt: {
+  lastLogin: {
     type: Date,
     default: Date.now
-  }
+  },
+  emailHistory: [
+    {
+      oldEmail: String,
+      newEmail: String,
+      changedAt: { type: Date, default: Date.now }
+    }
+  ]
+}, {
+  timestamps: true
 });
 
 // Hash password before saving

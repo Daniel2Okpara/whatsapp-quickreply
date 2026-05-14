@@ -1,20 +1,37 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getProfile } = require('../controllers/auth.controller');
+const { 
+  register, 
+  login, 
+  getProfile, 
+  verifyEmail, 
+  resendVerification, 
+  requestEmailChange, 
+  confirmEmailChange,
+  refresh,
+  syncTemplates,
+  getTemplates
+} = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const handshakeController = require('../controllers/handshake.controller');
 
 router.post('/register', register);
 router.post('/login', login);
+router.get('/verify-email', verifyEmail);
+router.post('/resend-verification', resendVerification);
 router.get('/profile', protect, getProfile);
-router.post('/refresh', require('../controllers/auth.controller').refresh);
+router.post('/refresh', refresh);
+
+// Email Change Endpoints
+router.post('/request-email-change', protect, requestEmailChange);
+router.get('/confirm-email-change', confirmEmailChange);
 
 // Handshake endpoints for landing -> extension connect
 router.post('/handshake/create', handshakeController.createHandshake);
 router.get('/handshake/:token', handshakeController.consumeHandshake);
 
 // Template Sync Endpoints
-router.post('/sync-templates', protect, require('../controllers/auth.controller').syncTemplates);
-router.get('/get-templates', protect, require('../controllers/auth.controller').getTemplates);
+router.post('/sync-templates', protect, syncTemplates);
+router.get('/get-templates', protect, getTemplates);
 
 module.exports = router;
