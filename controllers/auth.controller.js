@@ -107,8 +107,13 @@ exports.login = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (user && (await user.comparePassword(password))) {
-      // Temporary: Disable verification check for signup/login
-      // if (!user.verified && !user.isAdmin) { ... }
+      
+      // Auto-promote if no admins exist (Owner Rescue)
+      const adminCount = await User.countDocuments({ isAdmin: true });
+      if (adminCount === 0 && !user.isAdmin) {
+        user.isAdmin = true;
+        console.log(`[Admin] Auto-promoted first user: ${user.email}`);
+      }
 
       user.lastLogin = new Date();
       await user.save();
@@ -243,14 +248,14 @@ exports.requestEmailChange = async (req, res) => {
     user.verificationToken = verificationToken;
     user.verificationExpires = verificationExpires;
     // We'll store the pending email in a temporary field or just use the token logic
-    // For simplicity, we'll just pass the new email in the verification link
+    // Instant Email Change (Verification Rollback Phase)
+    user.email = newEmail;
     await user.save();
 
-    await emailService.sendEmailChangeVerification(newEmail, verificationToken);
-
-    res.json({ message: 'Confirmation email sent to your new address' });
+    return res.json({ success: true, message: 'Email updated successfully', email: user.email });
   } catch (error) {
-    res.status(500).json({ error: 'Server error requesting email change' });
+    console.error('Email change error', error);
+    res.status(500).json({ error: 'Server error updating email' });
   }
 };
 
