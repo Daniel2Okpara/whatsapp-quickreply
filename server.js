@@ -68,6 +68,25 @@ app.post('/webhook/paddle', express.raw({ type: '*/*' }), (req, res, next) => {
 app.use(express.json());
 
 // Mount auth and API routes after JSON body parser
+const signupLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: 3,
+  message: { error: 'Maximum signups from this IP exceeded. Please try again tomorrow.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const isDisposableEmail = (email) => {
+  const disposableDomains = [
+    'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'yopmail.com', 
+    'mailinator.com', 'throwawaymail.com', 'temp-mail.org', 'tempmail.net',
+    'dispostable.com', 'getnada.com', 'maildrop.cc', 'protonmail.ch' // Adding some common ones
+  ];
+  const domain = email.split('@')[1];
+  return disposableDomains.some(d => domain.includes(d));
+};
+
+app.use('/auth/register', signupLimiter);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/', aiLimiter, aiRoutes);
 app.use('/', userRoutes);

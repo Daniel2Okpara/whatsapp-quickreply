@@ -71,17 +71,26 @@ exports.register = async (req, res) => {
       verificationExpires
     });
 
-    // Send verification email
+    // Send verification email (Attempt in background, don't block)
     try {
-      await emailService.sendVerificationEmail(email, verificationToken);
-    } catch (err) {
-      console.error('Email sending failed during registration', err);
-      // We still created the user, they can request a resend later
-    }
+      emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
+    } catch (err) {}
+    
+    // Return tokens immediately for frictionless onboarding
+    const accessToken = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+    setRefreshTokenCookie(res, refreshToken);
 
     res.status(201).json({
-      message: 'Registration successful. Please check your email to verify your account.',
-      email: user.email
+      message: 'Registration successful',
+      _id: user._id,
+      email: user.email,
+      isPro: user.isPro,
+      isAdmin: user.isAdmin,
+      plan: user.plan,
+      verified: user.verified,
+      accessToken,
+      refreshToken
     });
   } catch (error) {
     console.error('Registration error', error);
@@ -98,14 +107,8 @@ exports.login = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (user && (await user.comparePassword(password))) {
-      
-      if (!user.verified && !user.isAdmin) {
-        return res.status(403).json({ 
-          error: 'Email not verified', 
-          requiresVerification: true,
-          email: user.email
-        });
-      }
+      // Temporary: Disable verification check for signup/login
+      // if (!user.verified && !user.isAdmin) { ... }
 
       user.lastLogin = new Date();
       await user.save();
