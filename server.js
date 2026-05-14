@@ -88,8 +88,17 @@ const isDisposableEmail = (email) => {
 
 app.use('/auth/register', signupLimiter);
 app.use('/auth', authLimiter, authRoutes);
-app.use('/', aiLimiter, aiRoutes);
-app.use('/', userRoutes);
+
+// Surgical AI Routing (No root overlap)
+app.post('/ai-reply', aiLimiter, aiRoutes);
+app.post('/ai-improve', aiLimiter, aiRoutes);
+app.post('/ai-feedback', aiLimiter, aiRoutes);
+app.post('/generate-replies', aiLimiter, aiRoutes);
+app.post('/improve-message', aiLimiter, aiRoutes);
+app.post('/transcribe', aiLimiter, aiRoutes);
+
+// User Routing
+app.get('/user-status', userRoutes);
 
 // Admin routes (protected by admin secret header)
 const adminRoutes = require('./routes/admin.routes');
