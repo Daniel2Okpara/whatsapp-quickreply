@@ -63,14 +63,14 @@ exports.register = async (req, res) => {
     const refreshToken = generateRefreshToken(user._id);
     setRefreshTokenCookie(res, refreshToken);
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Registration successful',
       _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
       accessToken, refreshToken
     });
   } catch (error) {
     console.error('Registration error', error);
-    res.status(500).json({ error: 'Server error during registration' });
+    return res.status(500).json({ error: 'Server error during registration' });
   }
 };
 
@@ -105,15 +105,16 @@ exports.login = async (req, res) => {
       const refreshToken = generateRefreshToken(user._id);
       setRefreshTokenCookie(res, refreshToken);
 
-      res.json({
+      return res.json({
         _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
         accessToken, refreshToken
       });
     } else {
-      res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
   } catch (error) {
-    res.status(500).json({ error: 'Server error during login' });
+    console.error('Login error', error);
+    return res.status(500).json({ error: 'Server error during login' });
   }
 };
 
@@ -141,10 +142,10 @@ exports.requestEmailChange = async (req, res) => {
     await user.save();
 
     console.log(`[Auth] Email updated: ${oldEmail} -> ${newEmail}`);
-    res.json({ success: true, message: 'Email updated successfully', email: user.email });
+    return res.json({ success: true, message: 'Email updated successfully', email: user.email });
   } catch (error) {
     console.error('[CRITICAL] Email change failure:', error);
-    res.status(500).json({ error: 'Server error updating email: ' + error.message });
+    return res.status(500).json({ error: 'Server error updating email: ' + error.message });
   }
 };
 
@@ -156,19 +157,22 @@ exports.wipeMyAccount = async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     console.log(`[Wipe] Account deleted: ${user.email}`);
-    res.json({ success: true, message: 'Account wiped successfully. You can now register as a new user.' });
+    return res.json({ success: true, message: 'Account wiped successfully. You can now register as a new user.' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to wipe account' });
+    console.error('Wipe error', error);
+    return res.status(500).json({ error: 'Failed to wipe account' });
   }
 };
 
 exports.getProfile = async (req, res) => {
   try {
+    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
     const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+    return res.json(user);
   } catch (error) {
-    res.status(500).json({ error: 'Server error fetching profile' });
+    console.error('Profile fetch error', error);
+    return res.status(500).json({ error: 'Server error fetching profile' });
   }
 };
 
@@ -179,9 +183,10 @@ exports.syncTemplates = async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     user.templates = templates;
     await user.save();
-    res.json({ message: 'Templates synced', templates: user.templates });
+    return res.json({ message: 'Templates synced', templates: user.templates });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to sync templates' });
+    console.error('Sync templates error', err);
+    return res.status(500).json({ error: 'Failed to sync templates' });
   }
 };
 
@@ -189,9 +194,10 @@ exports.getTemplates = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ templates: user.templates || [] });
+    return res.json({ templates: user.templates || [] });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch templates' });
+    console.error('Get templates error', err);
+    return res.status(500).json({ error: 'Failed to fetch templates' });
   }
 };
 
@@ -204,10 +210,11 @@ exports.refresh = async (req, res) => {
       if (err) return res.status(403).json({ error: 'Invalid or expired refresh token' });
       const user = await User.findById(decoded.id);
       if (!user) return res.status(404).json({ error: 'User not found' });
-      res.json({ accessToken: generateToken(user._id) });
+      return res.json({ accessToken: generateToken(user._id) });
     });
   } catch (err) {
-    res.status(500).json({ error: 'Server error during refresh' });
+    console.error('Refresh error', err);
+    return res.status(500).json({ error: 'Server error during refresh' });
   }
 };
 
@@ -220,8 +227,9 @@ exports.verifyEmail = async (req, res) => {
     user.verified = true;
     user.verificationToken = null;
     await user.save();
-    res.json({ message: 'Verified successfully' });
+    return res.json({ message: 'Verified successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Verification failed' });
+    console.error('Verify error', error);
+    return res.status(500).json({ error: 'Verification failed' });
   }
 };

@@ -61,7 +61,7 @@ app.get('/health', (req, res) => {
 // Paddle webhook needs raw body parsing to verify signature
 app.post('/webhook/paddle', express.raw({ type: '*/*' }), (req, res, next) => {
   req.rawBody = req.body; // Buffer
-  next();
+  return next();
 }, paddleRoutes);
 
 // Now parse JSON for other routes
@@ -142,7 +142,8 @@ const connectDB = async () => {
 // Error Handling Middleware
 app.use((err, req, res, next) => {
   console.error('[Server Error]:', err.stack);
-  res.status(500).json({ error: 'Something went wrong on the server' });
+  if (res.headersSent) return next(err);
+  return res.status(500).json({ error: 'Something went wrong on the server' });
 });
 
 // Start Server

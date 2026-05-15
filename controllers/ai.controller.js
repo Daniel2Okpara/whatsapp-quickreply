@@ -103,11 +103,11 @@ exports.generateReplies = async (req, res) => {
     });
 
     const content = completion.choices[0].message.content.trim();
-    res.status(200).json({ replies: [content] });
+    return res.status(200).json({ replies: [content] });
 
   } catch (error) {
     console.error('[AI Error]:', error.message);
-    res.status(500).json({ error: 'Failed to generate AI replies' });
+    return res.status(500).json({ error: 'Failed to generate AI replies' });
   }
 };
 
@@ -150,9 +150,9 @@ exports.improveMessage = async (req, res) => {
     });
 
     const improvedText = completion.choices?.[0]?.message?.content?.trim() || '';
-    res.status(200).json({ improvedText });
+    return res.status(200).json({ improvedText });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to improve message' });
+    return res.status(500).json({ error: 'Failed to improve message' });
   }
 };
 
