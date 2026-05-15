@@ -17,28 +17,35 @@ const protect = async (req, res, next) => {
       token = req.headers.authorization.split(' ')[1];
       
       if (!token) {
+        console.warn('[Auth Failed]: Token missing in Bearer header');
         return res.status(401).json({ error: 'Not authorized, token missing' });
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_production_key_2026');
       
-      req.user = await User.findById(decoded.id).select('-password');
+      // Store user info from token (including isAdmin role)
+      req.user = { 
+        id: decoded.id, 
+        _id: decoded.id, 
+        isAdmin: decoded.isAdmin || false 
+      };
       
-      if (!req.user) {
-        return res.status(401).json({ error: 'Not authorized, user not found' });
-      }
+      console.log(`[JWT Auth]: User ${decoded.id} authenticated. Role: ${decoded.isAdmin ? 'ADMIN' : 'User'}`);
 
-      // Successful authentication: call next() and RETURN immediately
+      // Optional: Fetch full user if needed for specific controller logic (e.g. email change)
+      // We do this inside controllers to keep the middleware fast.
+      
       return next();
 
     } catch (error) {
-      console.error('[Auth Middleware] Token error:', error.message);
+      console.error('[Auth Failed]:', error.message);
       return res.status(401).json({ error: 'Not authorized, token failed' });
     }
   }
 
   // 2. No token found: send error and RETURN
   if (!token) {
+    console.warn('[Auth Failed]: No Authorization header present');
     return res.status(401).json({ error: 'Not authorized, no token' });
   }
 };

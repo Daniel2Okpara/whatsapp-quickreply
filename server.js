@@ -37,15 +37,25 @@ const aiLimiter = rateLimit({
 
 // Middleware
 app.use(cookieParser());
+// CORS Configuration
+const allowedOrigins = [
+  'https://wa-quickreply-landing.vercel.app',
+  'https://wa-quickreply-admin.vercel.app',
+  'https://waquickreply.com',
+  'https://www.waquickreply.com',
+  'chrome-extension://caakoogldanocjlnlogcldndlfhgaoge'
+];
+
 app.use(cors({
   origin: function (origin, callback) {
-    if (process.env.NODE_ENV !== 'production' || !origin) return callback(null, true);
-    if (origin.startsWith('chrome-extension://') || origin.includes('vercel.app') || origin.includes('waquickreply')) {
+    // Allow requests with no origin (like mobile apps or curl) or if in whitelist
+    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
       return callback(null, true);
     }
+    console.warn(`[CORS Rejected]: ${origin}`);
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));

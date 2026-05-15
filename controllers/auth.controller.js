@@ -12,8 +12,8 @@ const isDisposableEmail = (email) => {
 };
 
 // Helper to generate JWTs
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'super_secret_production_key_2026', {
+const generateToken = (user) => {
+  return jwt.sign({ id: user._id, isAdmin: user.isAdmin }, process.env.JWT_SECRET || 'super_secret_production_key_2026', {
     expiresIn: '15m'
   });
 };
@@ -59,7 +59,7 @@ exports.register = async (req, res) => {
     // Attempt verification email in background
     emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
     
-    const accessToken = generateToken(user._id);
+    const accessToken = generateToken(user);
     const refreshToken = generateRefreshToken(user._id);
     setRefreshTokenCookie(res, refreshToken);
 
@@ -101,7 +101,7 @@ exports.login = async (req, res) => {
       user.lastLogin = new Date();
       await user.save();
 
-      const accessToken = generateToken(user._id);
+      const accessToken = generateToken(user);
       const refreshToken = generateRefreshToken(user._id);
       setRefreshTokenCookie(res, refreshToken);
 
@@ -210,7 +210,7 @@ exports.refresh = async (req, res) => {
       if (err) return res.status(403).json({ error: 'Invalid or expired refresh token' });
       const user = await User.findById(decoded.id);
       if (!user) return res.status(404).json({ error: 'User not found' });
-      return res.json({ accessToken: generateToken(user._id) });
+      return res.json({ accessToken: generateToken(user) });
     });
   } catch (err) {
     console.error('Refresh error', err);
