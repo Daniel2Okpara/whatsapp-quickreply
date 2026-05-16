@@ -233,3 +233,25 @@ exports.verifyEmail = async (req, res) => {
     return res.status(500).json({ error: 'Verification failed' });
   }
 };
+exports.resendVerification = async (req, res) => {
+  try {
+    let { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    email = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.verified) return res.status(400).json({ error: 'Email already verified' });
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.verificationToken = verificationToken;
+    user.verificationExpires = new Date(Date.now() + 15 * 60 * 1000);
+    await user.save();
+
+    await emailService.sendVerificationEmail(email, verificationToken);
+    return res.json({ message: 'Verification email sent' });
+  } catch (error) {
+    console.error('Resend verification error', error);
+    return res.status(500).json({ error: 'Server error resending verification' });
+  }
+};

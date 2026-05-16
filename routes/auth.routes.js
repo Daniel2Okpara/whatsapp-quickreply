@@ -7,7 +7,6 @@ const {
   verifyEmail, 
   resendVerification, 
   requestEmailChange, 
-  confirmEmailChange,
   refresh,
   syncTemplates,
   getTemplates,
@@ -23,16 +22,15 @@ router.get('/verify-email', verifyEmail);
 router.get('/profile', protect, getProfile);
 router.post('/refresh', refresh);
 
-// Email Change Endpoints
+// Email Change (Now Instant)
 router.post('/request-email-change', protect, requestEmailChange);
-router.get('/confirm-email-change', confirmEmailChange);
 router.delete('/wipe-my-account', protect, wipeMyAccount);
 
-// Handshake endpoints for landing -> extension connect
+// Handshake endpoints
 router.post('/handshake/create', handshakeController.createHandshake);
 router.get('/handshake/:token', handshakeController.consumeHandshake);
 
-// Template Sync Endpoints
+// Template Sync
 router.post('/sync-templates', protect, syncTemplates);
 router.get('/get-templates', protect, getTemplates);
 
