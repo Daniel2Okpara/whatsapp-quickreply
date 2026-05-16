@@ -39,16 +39,18 @@ const aiLimiter = rateLimit({
 app.use(cookieParser());
 // CORS Configuration
 const allowedOrigins = [
+  'https://wa-quick-reply-admin.vercel.app', // New production admin
+  'https://wa-quickreply-admin.vercel.app',   // Legacy admin
   'https://wa-quickreply-landing.vercel.app',
-  'https://wa-quickreply-admin.vercel.app',
   'https://waquickreply.com',
   'https://www.waquickreply.com',
+  'https://web.whatsapp.com',                // WhatsApp Web support
   'chrome-extension://caakoogldanocjlnlogcldndlfhgaoge'
 ];
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl) or if in whitelist
+    // Allow requests with no origin (Chrome extensions, Postman, server-to-server)
     if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
       return callback(null, true);
     }
@@ -57,8 +59,13 @@ app.use(cors({
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+  credentials: true,
+  optionsSuccessStatus: 200 // Success status for legacy browsers
+};
+
+// Handle OPTIONS preflight for all routes
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 
 // NOTE: We mount the JSON body parser after the raw webhook route to avoid
 // the global JSON parser consuming the webhook payload stream.
