@@ -1,53 +1,43 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/user.model');
 
 /**
  * Authentication Middleware
- * Standard Express implementation with strict return-on-response flow.
+ * Fixes ERR_HTTP_HEADERS_SENT by ensuring every branch returns immediately.
  */
 const protect = async (req, res, next) => {
-  // Safety check: if headers were already sent by previous middleware (rate limiters, etc.)
+  // 1. Guard: If headers were already sent, exit immediately.
   if (res.headersSent) return;
 
-  let token;
+  const authHeader = req.headers.authorization;
 
-  // 1. Check for Bearer token in Authorization header
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  // 2. Branch: Token present
+  if (authHeader && authHeader.startsWith('Bearer')) {
     try {
-      token = req.headers.authorization.split(' ')[1];
-      
+      const token = authHeader.split(' ')[1];
       if (!token) {
-        console.warn('[Auth Failed]: Token missing in Bearer header');
         return res.status(401).json({ error: 'Not authorized, token missing' });
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_production_key_2026');
       
-      // Store user info from token (including isAdmin role)
+      // Attach minimal user info
       req.user = { 
         id: decoded.id, 
         _id: decoded.id, 
-        isAdmin: decoded.isAdmin || false 
+        isAdmin: !!decoded.isAdmin 
       };
       
-      console.log(`[JWT Auth]: User ${decoded.id} authenticated. Role: ${decoded.isAdmin ? 'ADMIN' : 'User'}`);
-
-      // Optional: Fetch full user if needed for specific controller logic (e.g. email change)
-      // We do this inside controllers to keep the middleware fast.
-      
+      // Success: Proceed and RETURN
       return next();
 
     } catch (error) {
-      console.error('[Auth Failed]:', error.message);
+      // Failure: Send error and RETURN
       return res.status(401).json({ error: 'Not authorized, token failed' });
     }
   }
 
-  // 2. No token found: send error and RETURN
-  if (!token) {
-    console.warn('[Auth Failed]: No Authorization header present');
-    return res.status(401).json({ error: 'Not authorized, no token' });
-  }
+  // 3. Branch: No token found
+  return res.status(401).json({ error: 'Not authorized, no token' });
 };
 
 module.exports = { protect };
