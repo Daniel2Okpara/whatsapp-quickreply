@@ -7,6 +7,7 @@ const {
   verifyEmail, 
   resendVerification, 
   requestEmailChange, 
+  confirmEmailChange,
   refresh,
   syncTemplates,
   getTemplates,
@@ -22,8 +23,9 @@ router.get('/verify-email', verifyEmail);
 router.get('/profile', protect, getProfile);
 router.post('/refresh', refresh);
 
-// Email Change (Now Instant)
+// Email Change flow
 router.post('/request-email-change', protect, requestEmailChange);
+router.get('/confirm-email-change', confirmEmailChange);
 router.delete('/wipe-my-account', protect, wipeMyAccount);
 
 // Handshake endpoints

@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const Handshake = require('../models/handshake.model');
 const User = require('../models/user.model');
 const jwt = require('jsonwebtoken');
+const emailService = require('../services/email.service');
 
 // Reuse auth logic helpers or replicate for brevity if small
 const generateToken = (id) => {
@@ -50,13 +51,30 @@ exports.consumeHandshake = async (req, res) => {
 
     // Ensure user exists
     let user = await User.findOne({ email: rec.email });
+    let isNewUser = false;
+
     if (!user) {
+      isNewUser = true;
+      const verificationToken = crypto.randomBytes(32).toString('hex');
       user = new User({ 
         email: rec.email, 
         password: crypto.randomBytes(16).toString('hex'),
-        verified: true // Handshake from trusted landing page implies verification
+        verified: false, // Enforce verification for new users from extension
+        verificationToken,
+        verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000)
       });
       await user.save();
+      
+      // Send verification email in background
+      emailService.sendVerificationEmail(user.email, verificationToken).catch(e => console.error('Handshake verification email failed', e));
+    }
+
+    if (!user.verified && !user.isAdmin) {
+      return res.status(401).json({ 
+        error: 'email_not_verified',
+        message: 'Please verify your email address. Check your inbox for a verification link.',
+        email: user.email
+      });
     }
 
     const accessToken = generateToken(user._id);

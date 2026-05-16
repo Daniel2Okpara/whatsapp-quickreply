@@ -17,7 +17,7 @@ const sendVerificationEmail = async (email, token) => {
     }
 
     await resend.emails.send({
-      from: 'WA QuickReply <onboarding@resend.dev>', 
+      from: 'WA QuickReply <onboarding@auth.wa-quick-reply.com>', 
       to: email,
       subject: 'Verify your WA QuickReply account',
       html: `
@@ -43,7 +43,7 @@ const sendEmailChangeVerification = async (email, token) => {
       return;
     }
     await resend.emails.send({
-      from: 'WA QuickReply <onboarding@resend.dev>',
+      from: 'WA QuickReply <onboarding@auth.wa-quick-reply.com>',
       to: email,
       subject: 'Confirm your new email address',
       html: `

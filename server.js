@@ -15,7 +15,6 @@ process.on('unhandledRejection', (reason, promise) => {
 const aiRoutes = require('./routes/ai.routes');
 const authRoutes = require('./routes/auth.routes');
 const paddleRoutes = require('./routes/paddle.routes');
-const userRoutes = require('./routes/user.routes');
 
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
@@ -95,9 +94,13 @@ const signupLimiter = rateLimit({
 
 const isDisposableEmail = (email) => {
   const disposableDomains = [
-    'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'yopmail.com', 
-    'mailinator.com', 'throwawaymail.com', 'temp-mail.org', 'tempmail.net',
-    'dispostable.com', 'getnada.com', 'maildrop.cc', 'protonmail.ch' // Adding some common ones
+    'yopmail.com', 'mailinator.com', 'tempmail.com', 'guerrillamail.com', 
+    '10minutemail.com', 'temp-mail.org', 'tempmail.net', 'dispostable.com', 
+    'getnada.com', 'maildrop.cc', 'protonmail.ch', 'proxified.net', 
+    'secmail.pro', 'tutanota.com', 'cock.li', 'msgsafe.io', 'mail-temp.com',
+    'trashmail.com', 'disposable.com', 'sharklasers.com', 'guerrillamailblock.com',
+    'guerrillamail.net', 'guerrillamail.org', 'guerrillamail.biz', 'spam4.me',
+    'grr.la', 'guerrillamail.de'
   ];
   const domain = email.split('@')[1];
   return disposableDomains.some(d => domain.includes(d));
@@ -114,8 +117,7 @@ app.post('/generate-replies', aiLimiter, aiRoutes);
 app.post('/improve-message', aiLimiter, aiRoutes);
 app.post('/transcribe', aiLimiter, aiRoutes);
 
-// User Routing
-app.get('/user-status', userRoutes);
+// Surgical AI Routing (No root overlap)
 
 // Admin routes (protected by admin secret header)
 const adminRoutes = require('./routes/admin.routes');

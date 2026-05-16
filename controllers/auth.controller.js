@@ -4,9 +4,17 @@ const crypto = require('crypto');
 const validator = require('validator');
 const emailService = require('../services/email.service');
 
-// Simple disposable email detection
+// Comprehensive disposable email list
 const isDisposableEmail = (email) => {
-  const disposableDomains = ['yopmail.com', 'mailinator.com', 'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'temp-mail.org'];
+  const disposableDomains = [
+    'yopmail.com', 'mailinator.com', 'tempmail.com', 'guerrillamail.com', 
+    '10minutemail.com', 'temp-mail.org', 'tempmail.net', 'dispostable.com', 
+    'getnada.com', 'maildrop.cc', 'protonmail.ch', 'proxified.net', 
+    'secmail.pro', 'tutanota.com', 'cock.li', 'msgsafe.io', 'mail-temp.com',
+    'trashmail.com', 'disposable.com', 'sharklasers.com', 'guerrillamailblock.com',
+    'guerrillamail.net', 'guerrillamail.org', 'guerrillamail.biz', 'spam4.me',
+    'grr.la', 'guerrillamail.de'
+  ];
   const domain = email.split('@')[1];
   return disposableDomains.some(d => domain.includes(d));
 };
@@ -53,7 +61,7 @@ exports.register = async (req, res) => {
     const user = await User.create({ 
       email, password, isAdmin,
       verificationToken,
-      verificationExpires: new Date(Date.now() + 15 * 60 * 1000)
+      verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
     });
 
     // Attempt verification email in background
@@ -64,9 +72,9 @@ exports.register = async (req, res) => {
     setRefreshTokenCookie(res, refreshToken);
 
     return res.status(201).json({
-      message: 'Registration successful',
+      message: 'Registration successful. Please verify your email.',
       _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
-      accessToken, refreshToken
+      accessToken, refreshToken, verified: false
     });
   } catch (error) {
     console.error('Registration error', error);
@@ -83,6 +91,15 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ email });
     if (user && (await user.comparePassword(password))) {
       
+      // ENFORCE VERIFICATION (Anti-Abuse Phase)
+      if (!user.verified && !user.isAdmin) {
+        return res.status(401).json({ 
+          error: 'email_not_verified', 
+          message: 'Please verify your email address to access your account.',
+          email: user.email 
+        });
+      }
+
       // OWNER RESCUE LOGIC
       const adminEmail = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.toLowerCase() : null;
       if (adminEmail && user.email === adminEmail) {
@@ -107,7 +124,7 @@ exports.login = async (req, res) => {
 
       return res.json({
         _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
-        accessToken, refreshToken
+        accessToken, refreshToken, verified: user.verified
       });
     } else {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -135,17 +152,52 @@ exports.requestEmailChange = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Instant Email Change (Rollback Phase)
-    const oldEmail = user.email;
-    user.email = newEmail;
-    user.emailHistory.push({ oldEmail, newEmail, changedAt: new Date() });
+    // Generate Verification Token for new email
+    const token = crypto.randomBytes(32).toString('hex');
+    user.verificationToken = token;
+    user.verificationExpires = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hour
+    
+    // We store the pending email in a temporary field or just pass it in the URL
+    // For simplicity and to match the landing page, we'll send it in the email link
     await user.save();
 
-    console.log(`[Auth] Email updated: ${oldEmail} -> ${newEmail}`);
-    return res.json({ success: true, message: 'Email updated successfully', email: user.email });
+    await emailService.sendEmailChangeVerification(newEmail, token);
+
+    console.log(`[Auth] Email change requested: ${user.email} -> ${newEmail}`);
+    return res.json({ success: true, message: 'Confirmation email sent to ' + newEmail });
   } catch (error) {
     console.error('[CRITICAL] Email change failure:', error);
-    return res.status(500).json({ error: 'Server error updating email: ' + error.message });
+    return res.status(500).json({ error: 'Server error requesting email change' });
+  }
+};
+
+exports.confirmEmailChange = async (req, res) => {
+  try {
+    const { token, email } = req.query;
+    if (!token || !email) return res.status(400).json({ error: 'Token and new email required' });
+
+    const newEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ 
+      verificationToken: token,
+      verificationExpires: { $gt: new Date() }
+    });
+
+    if (!user) return res.status(400).json({ error: 'Invalid or expired confirmation link' });
+
+    const oldEmail = user.email;
+    user.email = newEmail;
+    user.verified = true;
+    user.verificationToken = null;
+    user.verificationExpires = null;
+    user.emailHistory.push({ oldEmail, newEmail, changedAt: new Date() });
+    
+    await user.save();
+
+    console.log(`[Auth] Email confirmed: ${oldEmail} -> ${newEmail}`);
+    return res.json({ success: true, message: 'Email updated successfully' });
+  } catch (error) {
+    console.error('Confirm email change error', error);
+    return res.status(500).json({ error: 'Failed to confirm email change' });
   }
 };
 
@@ -157,7 +209,7 @@ exports.wipeMyAccount = async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     console.log(`[Wipe] Account deleted: ${user.email}`);
-    return res.json({ success: true, message: 'Account wiped successfully. You can now register as a new user.' });
+    return res.json({ success: true, message: 'Account wiped successfully.' });
   } catch (error) {
     console.error('Wipe error', error);
     return res.status(500).json({ error: 'Failed to wipe account' });
@@ -169,7 +221,21 @@ exports.getProfile = async (req, res) => {
     if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
     const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    return res.json(user);
+    
+    // Ensure response includes all fields needed by extension for sync
+    return res.json({
+      _id: user._id,
+      email: user.email,
+      plan: user.plan,
+      isPro: user.isPro || user.plan === 'pro',
+      subscriptionStatus: user.subscriptionStatus,
+      trialEndsAt: user.trialEndsAt,
+      verified: user.verified,
+      isAdmin: user.isAdmin,
+      creditsUsed: user.creditsUsed || 0,
+      dailyUsage: user.dailyUsage || 0,
+      createdAt: user.createdAt
+    });
   } catch (error) {
     console.error('Profile fetch error', error);
     return res.status(500).json({ error: 'Server error fetching profile' });
@@ -222,30 +288,55 @@ exports.verifyEmail = async (req, res) => {
   try {
     const { token, email } = req.query;
     if (!token || !email) return res.status(400).json({ error: 'Token and email required' });
-    const user = await User.findOne({ email: email.toLowerCase(), verificationToken: token });
-    if (!user) return res.status(400).json({ error: 'Invalid verification' });
+    const user = await User.findOne({ 
+      email: email.toLowerCase().trim(), 
+      verificationToken: token 
+    });
+    if (!user) return res.status(400).json({ error: 'Invalid or expired verification token' });
+    
     user.verified = true;
     user.verificationToken = null;
+    user.verificationExpires = null;
     await user.save();
-    return res.json({ message: 'Verified successfully' });
+    
+    console.log(`[Auth] Email verified: ${user.email}`);
+    return res.json({ success: true, message: 'Verified successfully' });
   } catch (error) {
     console.error('Verify error', error);
     return res.status(500).json({ error: 'Verification failed' });
   }
 };
+
 exports.resendVerification = async (req, res) => {
   try {
     let { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
     email = email.toLowerCase().trim();
+    if (!validator.isEmail(email)) return res.status(400).json({ error: 'Invalid email format' });
+    if (isDisposableEmail(email)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    let user = await User.findOne({ email });
+    
+    // Create user if they don't exist (Extension-First Flow)
+    if (!user) {
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      user = await User.create({ 
+        email, 
+        password: crypto.randomBytes(16).toString('hex'),
+        verified: false,
+        verificationToken,
+        verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+      });
+      await emailService.sendVerificationEmail(email, verificationToken);
+      console.log(`[Auth] New user created via extension flow: ${email}`);
+      return res.json({ message: 'Verification email sent' });
+    }
+
     if (user.verified) return res.status(400).json({ error: 'Email already verified' });
 
     const verificationToken = crypto.randomBytes(32).toString('hex');
     user.verificationToken = verificationToken;
-    user.verificationExpires = new Date(Date.now() + 15 * 60 * 1000);
+    user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     await user.save();
 
     await emailService.sendVerificationEmail(email, verificationToken);
