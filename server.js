@@ -40,9 +40,8 @@ app.use(cookieParser());
 const allowedOrigins = [
   'https://wa-quick-reply-admin.vercel.app', // New production admin
   'https://wa-quickreply-admin.vercel.app',   // Legacy admin
-  'https://wa-quickreply-landing.vercel.app',
-  'https://waquickreply.com',
-  'https://www.waquickreply.com',
+  'https://www.wa-quick-reply.com',
+  'https://wa-quick-reply.com',
   'https://web.whatsapp.com',                // WhatsApp Web support
   'chrome-extension://caakoogldanocjlnlogcldndlfhgaoge'
 ];
