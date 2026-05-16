@@ -569,7 +569,7 @@
       </div>
       <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
         <button id='waqr-settings' title='Settings' style='background: none; border: none; color: white; font-size: 16px; cursor: pointer; display:flex; align-items:center; padding:4px; border-radius:6px; transition: background 0.2s;' onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">⚙️</button>
-        <a href="https://wa-quickreply-landing.vercel.app/#pricing" target="_blank" id="waqr-upgrade-link" style="color:white; font-size:11px; text-decoration:underline; font-weight:500; white-space:nowrap;">Upgrade</a>
+        <a href="https://www.wa-quick-reply.com/#pricing" target="_blank" id="waqr-upgrade-link" style="color:white; font-size:11px; text-decoration:underline; font-weight:500; white-space:nowrap;">Upgrade</a>
         <button id='waqr-close' style='background: none; border: none; color: white; font-size: 20px; cursor: pointer; display:flex; align-items:center; padding:4px;'>×</button>
       </div>
     </div>
@@ -879,7 +879,7 @@
           settingsPanel.style.display = 'none';
           showToast('Email updated ✅');
           const upgradeLink = shadow.querySelector('#waqr-upgrade-link');
-          if (upgradeLink) upgradeLink.href = 'https://wa-quickreply-landing.vercel.app/#pricing?email=' + encodeURIComponent(nw);
+          if (upgradeLink) upgradeLink.href = 'https://www.wa-quick-reply.com/#pricing?email=' + encodeURIComponent(nw);
           const emailDisplay = shadow.getElementById('waqr-email-display');
           if (emailDisplay) emailDisplay.textContent = nw;
         });
@@ -895,7 +895,7 @@
       const email = (r && r.email) ? r.email : null;
       const upgradeLink = shadow.querySelector('#waqr-upgrade-link');
       if (upgradeLink) {
-        const base = 'https://wa-quickreply-landing.vercel.app/#pricing';
+        const base = 'https://www.wa-quick-reply.com/#pricing';
         upgradeLink.href = email ? (base + '?email=' + encodeURIComponent(email)) : base;
       }
     });
@@ -1661,7 +1661,7 @@
   });
 
   shadow.getElementById('waqr-modal-upgrade').addEventListener('click', () => {
-    window.open('https://wa-quickreply-landing.vercel.app/#pricing', '_blank');
+    window.open('https://www.wa-quick-reply.com/#pricing', '_blank');
     modalOverlay.classList.remove('active');
   });
 
@@ -1675,7 +1675,7 @@
       }
       // Paddle Checkout URL with email prefilled
       // Note: In a real app, this should link to your checkout page or trigger Paddle.js
-      const checkoutUrl = `https://wa-quickreply-landing.vercel.app/#pricing?email=${encodeURIComponent(email)}&trial=true`;
+      const checkoutUrl = `https://www.wa-quick-reply.com/#pricing?email=${encodeURIComponent(email)}&trial=true`;
       window.open(checkoutUrl, '_blank');
       showToast('🚀 Opening secure checkout...');
     });
