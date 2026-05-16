@@ -345,11 +345,13 @@ async function refreshSubscription() {
       const body = await resp.json();
       if (body) {
         await storageSet({ 
+          email: body.email,
+          userId: body._id,
           plan: body.plan || 'free', 
           isPro: !!body.isPro,
           subscriptionStatus: body.subscriptionStatus || 'inactive',
           trialEndsAt: body.trialEndsAt || null,
-          verified: body.verified || false
+          verified: !!body.verified
         });
       }
     }
