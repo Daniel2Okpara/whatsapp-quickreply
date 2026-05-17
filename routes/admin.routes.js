@@ -9,30 +9,19 @@ const { protect } = require('../middleware/auth.middleware');
  * AND the user must have 'isAdmin: true' in the database.
  */
 const adminOnly = (req, res, next) => {
-  const secret = process.env.ADMIN_SECRET;
-  const rescueSecret = 'WA-Admin-Rescue-99';
-  const header = req.headers['x-admin-secret'];
-
-  // Check 1: User has 'isAdmin' in their JWT
+  // Strict Role Check: User must have 'isAdmin' in their JWT
   if (req.user && req.user.isAdmin === true) {
-    return next();
-  }
-  
-  // Check 2: Fallback to Secret Header (Safety Bypass)
-  if ((secret && header === secret) || (header === rescueSecret)) {
-    console.log('[Admin] Access granted via Secret Header.');
     return next();
   }
 
   console.error('[Admin] Forbidden: User is not an admin.', { email: req.user?.email });
   return res.status(403).json({ 
     error: 'forbidden: admin access required',
-    message: 'Your account lacks administrator privileges. Please register as the first user or provide the Admin Secret.'
+    message: 'Your account lacks administrator privileges.'
   });
 };
 
-// Rescue route (public but requires ADMIN_SECRET in body)
-router.post('/promote-rescue', adminController.promoteUser);
+
 
 // Apply protection to all routes below
 router.use(protect);

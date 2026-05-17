@@ -53,13 +53,9 @@ exports.register = async (req, res) => {
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ error: 'User already exists' });
 
-    // Initial Admin Logic
-    const adminCount = await User.countDocuments({ isAdmin: true });
-    const isAdmin = adminCount === 0;
-
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const user = await User.create({ 
-      email, password, isAdmin,
+      email, password, isAdmin: false,
       verificationToken,
       verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
     });
@@ -152,22 +148,27 @@ exports.requestEmailChange = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Generate Verification Token for new email
-    const token = crypto.randomBytes(32).toString('hex');
-    user.verificationToken = token;
-    user.verificationExpires = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hour
-    
-    // We store the pending email in a temporary field or just pass it in the URL
-    // For simplicity and to match the landing page, we'll send it in the email link
+    // Direct Email Update
+    const oldEmail = user.email;
+    user.email = newEmail;
     await user.save();
 
-    await emailService.sendEmailChangeVerification(newEmail, token);
-
-    console.log(`[Auth] Email change requested: ${user.email} -> ${newEmail}`);
-    return res.json({ success: true, message: 'Confirmation email sent to ' + newEmail });
+    console.log(`[Auth] Direct email update: ${oldEmail} -> ${newEmail}`);
+    
+    // Return fresh tokens so the extension stays authenticated
+    const accessToken = generateToken(user);
+    const refreshToken = generateRefreshToken(user._id);
+    
+    return res.json({ 
+      success: true, 
+      message: 'Email updated successfully.',
+      email: user.email,
+      accessToken,
+      refreshToken
+    });
   } catch (error) {
-    console.error('[CRITICAL] Email change failure:', error);
-    return res.status(500).json({ error: 'Server error requesting email change' });
+    console.error('[CRITICAL] Email update failure:', error);
+    return res.status(500).json({ error: 'Server error updating email' });
   }
 };
 
@@ -203,16 +204,39 @@ exports.confirmEmailChange = async (req, res) => {
 
 exports.wipeMyAccount = async (req, res) => {
   try {
-    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
-    
-    const user = await User.findByIdAndDelete(req.user.id);
+    const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-
-    console.log(`[Wipe] Account deleted: ${user.email}`);
-    return res.json({ success: true, message: 'Account wiped successfully.' });
+    
+    await User.findByIdAndDelete(req.user.id);
+    return res.json({ message: 'Account permanently deleted' });
   } catch (error) {
     console.error('Wipe error', error);
     return res.status(500).json({ error: 'Failed to wipe account' });
+  }
+};
+
+exports.verificationStatus = async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ error: 'Email required' });
+    
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    if (user.verified) {
+      const accessToken = generateToken(user);
+      const refreshToken = generateRefreshToken(user._id);
+      return res.json({
+        verified: true,
+        _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
+        accessToken, refreshToken
+      });
+    }
+    
+    return res.json({ verified: false });
+  } catch (error) {
+    console.error('Status error', error);
+    return res.status(500).json({ error: 'Status check failed' });
   }
 };
 

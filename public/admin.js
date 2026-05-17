@@ -1,7 +1,7 @@
 async function apiFetch(path, opts = {}) {
-  const secret = document.getElementById('admin-secret').value.trim();
-  if (!secret) throw new Error('admin secret required');
-  const headers = Object.assign({ 'x-admin-secret': secret, 'Content-Type': 'application/json' }, opts.headers || {});
+  const token = document.getElementById('admin-secret').value.trim();
+  if (!token) throw new Error('JWT token required');
+  const headers = Object.assign({ 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, opts.headers || {});
   const res = await fetch(path, Object.assign({ headers }, opts));
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -73,6 +73,40 @@ document.getElementById('load-users').addEventListener('click', async () => {
     renderStatus('Loading users...', false);
     const data = await apiFetch('/admin/users');
     window.__ADMIN_USERS = data.users || [];
+    
+    // Calculate Metrics
+    let verifiedCount = 0;
+    let proCount = 0;
+    let trialCount = 0;
+    let freeCount = 0;
+    let totalAi = 0;
+    let growth = 0;
+    const now = Date.now();
+    const oneDay = 24 * 60 * 60 * 1000;
+
+    window.__ADMIN_USERS.forEach(u => {
+      if (u.verified) verifiedCount++;
+      if (u.plan === 'pro') proCount++;
+      else if (u.plan === 'trial') trialCount++;
+      else freeCount++;
+      
+      totalAi += (u.creditsUsed || 0);
+      
+      const createdTime = new Date(u.createdAt).getTime();
+      if (now - createdTime < oneDay) {
+        growth++;
+      }
+    });
+
+    // Update DOM
+    document.getElementById('metric-total-users').textContent = window.__ADMIN_USERS.length;
+    document.getElementById('metric-verified-users').textContent = verifiedCount;
+    document.getElementById('metric-pro-users').textContent = proCount;
+    document.getElementById('metric-trial-users').textContent = trialCount;
+    document.getElementById('metric-free-users').textContent = freeCount;
+    document.getElementById('metric-total-ai').textContent = totalAi;
+    document.getElementById('metric-growth').textContent = '+' + growth;
+
     renderUsers(window.__ADMIN_USERS.slice(0, 20));
     renderStatus('Loaded ' + (data.users?.length || 0) + ' users', false);
   } catch (err) {
@@ -131,4 +165,12 @@ document.getElementById('export-csv').addEventListener('click', () => {
   a.remove();
   URL.revokeObjectURL(url);
 });
+
+// Auto-polling
+setInterval(() => {
+  const secret = document.getElementById('admin-secret').value.trim();
+  if (secret) {
+    document.getElementById('load-users').click();
+  }
+}, 30000);
 

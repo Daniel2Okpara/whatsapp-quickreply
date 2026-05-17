@@ -10,13 +10,44 @@
   <div class="container">
     <h1>Admin Dashboard</h1>
     <div class="controls">
-      <input id="admin-secret" type="password" placeholder="Enter admin secret" />
+      <input id="admin-secret" type="password" placeholder="Paste your admin JWT token" />
       <button id="load-users">Load Users</button>
       <input id="search" placeholder="Search email or plan" />
       <button id="export-csv">Export CSV</button>
     </div>
 
     <div id="status" class="status"></div>
+    
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <h3>Total Users</h3>
+        <p id="metric-total-users">0</p>
+      </div>
+      <div class="metric-card">
+        <h3>Verified Users</h3>
+        <p id="metric-verified-users">0</p>
+      </div>
+      <div class="metric-card">
+        <h3>Pro Users</h3>
+        <p id="metric-pro-users">0</p>
+      </div>
+      <div class="metric-card">
+        <h3>Trial Users</h3>
+        <p id="metric-trial-users">0</p>
+      </div>
+      <div class="metric-card">
+        <h3>Free Users</h3>
+        <p id="metric-free-users">0</p>
+      </div>
+      <div class="metric-card">
+        <h3>Total AI Usage</h3>
+        <p id="metric-total-ai">0</p>
+      </div>
+      <div class="metric-card">
+        <h3>Daily Growth</h3>
+        <p id="metric-growth">0</p>
+      </div>
+    </div>
 
     <div id="users-wrap"></div>
     <div id="pagination" class="pagination"></div>

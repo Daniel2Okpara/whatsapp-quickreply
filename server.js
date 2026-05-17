@@ -116,11 +116,15 @@ app.post('/generate-replies', aiLimiter, aiRoutes);
 app.post('/improve-message', aiLimiter, aiRoutes);
 app.post('/transcribe', aiLimiter, aiRoutes);
 
-// Surgical AI Routing (No root overlap)
-
-// Admin routes (protected by admin secret header)
+// Admin routes (protected by JWT isAdmin check)
 const adminRoutes = require('./routes/admin.routes');
 app.use('/admin', adminRoutes);
+
+// Serve admin static panel at /admin-static
+app.use('/admin-static', express.static(path.join(__dirname, 'public')));
+app.get('/admin-panel', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
 // Server-Sent Events endpoint for subscription updates
 const eventsService = require('./services/events.service');
