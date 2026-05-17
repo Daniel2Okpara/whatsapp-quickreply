@@ -725,7 +725,7 @@
 
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:6px;">
       <div>
-        <div style="font-size:12px;font-weight:600;color:#1e293b;">Auto Follow-ups</div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;display:flex;align-items:center;gap:4px;">Auto Follow-ups <span style="background:var(--waqr-pro);color:white;padding:1px 4px;border-radius:3px;font-size:8px;font-weight:800;">PRO</span></div>
         <div style="font-size:10px;color:#94a3b8;">Suggest when to check in</div>
       </div>
       <label class="waqr-toggle"><input type="checkbox" id="waqr-set-followup" checked><span class="waqr-slider"></span></label>
@@ -733,7 +733,7 @@
 
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:12px;">
       <div>
-        <div style="font-size:12px;font-weight:600;color:#1e293b;">Style Learning</div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;display:flex;align-items:center;gap:4px;">Style Learning <span style="background:var(--waqr-pro);color:white;padding:1px 4px;border-radius:3px;font-size:8px;font-weight:800;">PRO</span></div>
         <div style="font-size:10px;color:#94a3b8;">Match how you write</div>
       </div>
       <label class="waqr-toggle"><input type="checkbox" id="waqr-set-learning" checked><span class="waqr-slider"></span></label>
@@ -754,8 +754,11 @@
 
   // Load saved settings into the panel UI
   function loadSettingsUI() {
-    storageGet(['waqrSettings', 'email'], (r) => {
+    storageGet(['waqrSettings', 'email', 'plan'], (r) => {
       const s = r.waqrSettings || {};
+      const plan = r.plan || 'free';
+      const isFree = plan === 'free';
+      
       const emailDisplay = shadow.getElementById('waqr-email-display');
       if (emailDisplay) emailDisplay.textContent = r.email || '';
 
@@ -771,9 +774,15 @@
         b.classList.toggle('active', b.dataset.value === emojiDefault));
 
       const fuEl = shadow.getElementById('waqr-set-followup');
-      if (fuEl) fuEl.checked = s.followUp !== 'disabled';
+      if (fuEl) {
+        fuEl.checked = isFree ? false : (s.followUp !== 'disabled');
+        fuEl.disabled = isFree;
+      }
       const learnEl = shadow.getElementById('waqr-set-learning');
-      if (learnEl) learnEl.checked = s.styleLearning !== 'off';
+      if (learnEl) {
+        learnEl.checked = isFree ? false : (s.styleLearning !== 'off');
+        learnEl.disabled = isFree;
+      }
     });
   }
 
@@ -1700,7 +1709,6 @@
     
     if (lastMsg.role === 'assistant') {
       isFollowUp = true;
-      showToast('⌛ Generating a smart follow-up...');
     }
 
     const genBtn = shadow.getElementById('waqr-generate');
@@ -1709,9 +1717,21 @@
 
     storageGet(['waqrSettings', 'plan'], (res) => {
       const settings = res.waqrSettings || {};
-      const isProOrTrial = res.plan === 'pro' || res.plan === 'trial';
-      let styleProfile = null;
+      const plan = res.plan || 'free';
+      const isProOrTrial = plan === 'pro' || plan === 'trial';
+      
+      // FEATURE LOCK: Block Auto Follow-Up for free users
+      if (isFollowUp && !isProOrTrial) {
+        genBtn.innerHTML = '✨ Generate AI Reply';
+        genBtn.disabled = false;
+        showUpgradeModal('🔒 Auto Follow-Up is a Pro feature. Upgrade to unlock unlimited follow-ups!');
+        return;
+      }
 
+      if (isFollowUp) showToast('⌛ Generating a smart follow-up...');
+
+      // FEATURE LOCK: Disable Style Learning for free users
+      let styleProfile = null;
       if (settings.styleLearning !== 'off' && isProOrTrial) {
         styleProfile = captureStyleProfile();
       }
@@ -1915,6 +1935,130 @@
   });
 
   initializeComponents();
+
+  // ============================================================================
+  // TOOLTIP ONBOARDING SYSTEM (Phase 6)
+  // ============================================================================
+  const TOOLTIP_STEPS = [
+    {
+      id: 'tooltip_templates',
+      targetSelector: '.waqr-tab[data-tab="templates"]',
+      title: '📋 Smart Templates',
+      body: 'Save your best replies and reuse them in one click. Try typing <b>/price</b> in any chat!',
+      position: 'below'
+    },
+    {
+      id: 'tooltip_ai',
+      targetSelector: '.waqr-tab[data-tab="ai"]',
+      title: '✨ AI Reply',
+      body: 'Let AI read the chat and write the perfect reply for you. Works with any tone.',
+      position: 'below'
+    },
+    {
+      id: 'tooltip_improve',
+      targetSelector: '#waqr-improve-btn',
+      title: '⚡ Improve Message',
+      body: 'Type a rough draft, then click <b>Improve</b> to make it sound polished and professional.',
+      position: 'above'
+    }
+  ];
+
+  const tooltipStyleEl = document.createElement('style');
+  tooltipStyleEl.textContent = `
+    .waqr-tooltip {
+      position: fixed; background: #1e293b; color: white; padding: 12px 16px;
+      border-radius: 12px; width: 220px; z-index: 3000000; pointer-events: auto;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.35); border: 1px solid #334155;
+      animation: waqr-tooltip-in 0.25s ease-out;
+    }
+    @keyframes waqr-tooltip-in {
+      from { opacity: 0; transform: scale(0.9) translateY(6px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .waqr-tooltip::before {
+      content: ''; position: absolute; left: 20px;
+      border: 7px solid transparent;
+    }
+    .waqr-tooltip.pos-above::before { bottom: -14px; border-top-color: #1e293b; }
+    .waqr-tooltip.pos-below::before { top: -14px; border-bottom-color: #1e293b; }
+    .waqr-tooltip-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+    .waqr-tooltip-body { font-size: 12px; color: #94a3b8; line-height: 1.5; }
+    .waqr-tooltip-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+    .waqr-tooltip-dismiss { font-size: 11px; color: #64748b; cursor: pointer; text-decoration: underline; }
+    .waqr-tooltip-dismiss:hover { color: #94a3b8; }
+    .waqr-tooltip-next { background: #25D366; color: white; border: none; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; }
+  `;
+  shadow.appendChild(tooltipStyleEl);
+
+  let currentTooltipEl = null;
+
+  function showTooltipStep(stepIndex) {
+    if (currentTooltipEl) currentTooltipEl.remove();
+    if (stepIndex >= TOOLTIP_STEPS.length) return;
+
+    const step = TOOLTIP_STEPS[stepIndex];
+    const target = shadow.querySelector(step.targetSelector);
+    if (!target) { showTooltipStep(stepIndex + 1); return; }
+
+    const rect = target.getBoundingClientRect();
+    if (!rect || rect.width === 0) { showTooltipStep(stepIndex + 1); return; }
+
+    const tip = document.createElement('div');
+    tip.className = `waqr-tooltip pos-${step.position}`;
+    const isLast = stepIndex === TOOLTIP_STEPS.length - 1;
+    tip.innerHTML = `
+      <div class="waqr-tooltip-title">${step.title}</div>
+      <div class="waqr-tooltip-body">${step.body}</div>
+      <div class="waqr-tooltip-footer">
+        <span class="waqr-tooltip-dismiss">Skip all</span>
+        <button class="waqr-tooltip-next">${isLast ? 'Got it! 🎉' : 'Next →'}</button>
+      </div>
+    `;
+
+    if (step.position === 'below') {
+      tip.style.top = (rect.bottom + 8) + 'px';
+      tip.style.left = rect.left + 'px';
+    } else {
+      tip.style.top = (rect.top - 130) + 'px';
+      tip.style.left = rect.left + 'px';
+    }
+
+    tip.querySelector('.waqr-tooltip-next').addEventListener('click', () => {
+      tip.remove();
+      currentTooltipEl = null;
+      if (isLast) {
+        storageSet({ tooltips_seen: true });
+      } else {
+        showTooltipStep(stepIndex + 1);
+      }
+    });
+
+    tip.querySelector('.waqr-tooltip-dismiss').addEventListener('click', () => {
+      tip.remove();
+      currentTooltipEl = null;
+      storageSet({ tooltips_seen: true });
+    });
+
+    shadow.appendChild(tip);
+    currentTooltipEl = tip;
+  }
+
+  // Show tooltips only for first-time users, after a short delay
+  storageGet(['tooltips_seen', 'onboarding_seen'], (r) => {
+    if (!r || !r.tooltips_seen) {
+      setTimeout(() => {
+        if (panel.style.display === 'flex') {
+          showTooltipStep(0);
+        } else {
+          const fabClickOnce = () => {
+            setTimeout(() => showTooltipStep(0), 600);
+            fab.removeEventListener('click', fabClickOnce);
+          };
+          fab.addEventListener('click', fabClickOnce);
+        }
+      }, 3000);
+    }
+  });
 
   function getCurrentChatName() {
     const testIdEl = document.querySelector('[data-testid="conversation-info-header-chat-title"]');

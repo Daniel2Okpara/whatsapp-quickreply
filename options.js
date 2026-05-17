@@ -27,11 +27,58 @@ document.getElementById('save-email').addEventListener('click', async () => {
       body: JSON.stringify(body)
     });
     
+    const respData = await resp.json().catch(() => ({}));
+
     if (resp.ok) {
-      status.textContent = 'Verification email sent to ' + email + '. Please verify then click Connect.';
+      status.textContent = 'Verification email sent to ' + email + '. Check your inbox. Waiting for verification...';
+      
+      // Polling logic
+      if (!data.jwtToken) {
+        let attempts = 0;
+        const pollInterval = setInterval(async () => {
+          attempts++;
+          if (attempts > 60) { // 5 minutes max
+            clearInterval(pollInterval);
+            status.textContent = 'Verification timed out. Please try again.';
+            return;
+          }
+          try {
+            const statResp = await fetch(`${SERVER}/auth/verification-status?email=${encodeURIComponent(email)}`);
+            if (statResp.ok) {
+              const statData = await statResp.json();
+              if (statData.verified) {
+                clearInterval(pollInterval);
+                status.innerHTML = '<span style="color:#25D366;font-weight:bold;">Email verified! Unlocking extension...</span>';
+                
+                // Store auth and unlock
+                chrome.storage.local.set({ 
+                  email: statData.email, 
+                  userId: statData._id,
+                  jwtToken: statData.accessToken,
+                  plan: statData.plan || 'free',
+                  isPro: !!statData.isPro
+                }, () => {
+                  setTimeout(() => {
+                    status.textContent = 'Connected as ' + statData.email + '. Refresh WhatsApp to apply.';
+                    document.getElementById('token').value = '';
+                  }, 1500);
+                });
+              }
+            }
+          } catch (e) {
+            // ignore network errors during polling
+          }
+        }, 5000);
+      } else {
+         // Direct email update success
+         status.textContent = 'Email updated to ' + email + ' successfully!';
+         chrome.storage.local.set({ email: email });
+         if (respData.accessToken) {
+            chrome.storage.local.set({ jwtToken: respData.accessToken });
+         }
+      }
     } else {
-      const data = await resp.json().catch(() => ({}));
-      status.textContent = 'Error: ' + (data.error || 'Failed to send email');
+      status.textContent = 'Error: ' + (respData.error || 'Failed to send email');
     }
   } catch (err) {
     status.textContent = 'Network error: ' + err.message;

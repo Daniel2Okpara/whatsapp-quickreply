@@ -362,4 +362,4 @@ async function refreshSubscription() {
 
 chrome.runtime.onStartup.addListener(refreshSubscription);
 refreshSubscription();
-setInterval(refreshSubscription, 15000);
+setInterval(refreshSubscription, 45000);
