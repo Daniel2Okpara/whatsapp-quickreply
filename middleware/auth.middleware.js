@@ -20,11 +20,12 @@ const protect = async (req, res, next) => {
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_production_key_2026');
       
-      // Attach minimal user info
+      // Attach user info including role
       req.user = { 
         id: decoded.id, 
         _id: decoded.id, 
-        isAdmin: !!decoded.isAdmin 
+        isAdmin: !!decoded.isAdmin,
+        role: decoded.role || 'user'
       };
       
       // Success: Proceed and RETURN
@@ -40,4 +41,29 @@ const protect = async (req, res, next) => {
   return res.status(401).json({ error: 'Not authorized, no token' });
 };
 
-module.exports = { protect };
+/**
+ * Role-Based Access Control Middlewares
+ */
+const requireAdmin = (req, res, next) => {
+  if (res.headersSent) return;
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'super_admin' || req.user.isAdmin === true)) {
+    return next();
+  }
+  return res.status(403).json({ 
+    error: 'forbidden: admin access required',
+    message: 'Your account lacks administrator privileges.'
+  });
+};
+
+const requireSuperAdmin = (req, res, next) => {
+  if (res.headersSent) return;
+  if (req.user && req.user.role === 'super_admin') {
+    return next();
+  }
+  return res.status(403).json({ 
+    error: 'forbidden: super_admin access required',
+    message: 'This operation requires Super Admin privileges.'
+  });
+};
+
+module.exports = { protect, requireAdmin, requireSuperAdmin };

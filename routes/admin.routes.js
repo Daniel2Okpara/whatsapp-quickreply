@@ -1,40 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
-const { protect } = require('../middleware/auth.middleware');
+const { protect, requireAdmin, requireSuperAdmin } = require('../middleware/auth.middleware');
 
-/**
- * Admin Access Control
- * All routes here require a valid JWT (checked by 'protect')
- * AND the user must have 'isAdmin: true' in the database.
- */
-const adminOnly = (req, res, next) => {
-  // Strict Role Check: User must have 'isAdmin' in their JWT
-  if (req.user && req.user.isAdmin === true) {
-    return next();
-  }
-
-  console.error('[Admin] Forbidden: User is not an admin.', { email: req.user?.email });
-  return res.status(403).json({ 
-    error: 'forbidden: admin access required',
-    message: 'Your account lacks administrator privileges.'
-  });
-};
-
-
-
-// Apply protection to all routes below
+// All routes require authentication
 router.use(protect);
-router.use(adminOnly);
 
-// Endpoints
-router.post('/cancel-subscription', adminController.cancelSubscription);
-router.get('/users', adminController.listUsers);
-router.get('/user/:email', adminController.getUser);
-router.post('/simulate-webhook', adminController.simulateWebhook);
-router.get('/webhook-logs', adminController.listWebhookLogs);
-router.post('/delete-user', adminController.deleteUser);
-router.post('/update-admin', adminController.updateAdmin);
-router.get('/feedback-stats', adminController.getFeedbackStats);
+// 1. Any authenticated user can request admin access
+router.post('/request-access', adminController.requestAccess);
+
+// 2. Admin & Super Admin routes
+router.get('/users', requireAdmin, adminController.listUsers);
+router.get('/user/:email', requireAdmin, adminController.getUser);
+router.post('/cancel-subscription', requireAdmin, adminController.cancelSubscription);
+router.post('/upgrade-plan', requireAdmin, adminController.upgradePlan);
+router.post('/downgrade-plan', requireAdmin, adminController.downgradeplan);
+router.post('/simulate-webhook', requireAdmin, adminController.simulateWebhook);
+router.get('/webhook-logs', requireAdmin, adminController.listWebhookLogs);
+router.get('/feedback-stats', requireAdmin, adminController.getFeedbackStats);
+
+// 3. Super Admin only routes
+router.get('/pending-requests', requireSuperAdmin, adminController.getPendingRequests);
+router.post('/approve-request', requireSuperAdmin, adminController.approveRequest);
+router.post('/reject-request', requireSuperAdmin, adminController.rejectRequest);
+router.post('/promote-super-admin', requireSuperAdmin, adminController.promoteSuperAdmin);
+router.post('/demote-admin', requireSuperAdmin, adminController.demoteAdmin);
+router.post('/delete-user', requireSuperAdmin, adminController.deleteUser);
+router.post('/update-admin', requireSuperAdmin, adminController.updateAdmin);
 
 module.exports = router;

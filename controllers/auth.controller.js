@@ -21,7 +21,7 @@ const isDisposableEmail = (email) => {
 
 // Helper to generate JWTs
 const generateToken = (user) => {
-  return jwt.sign({ id: user._id, isAdmin: user.isAdmin }, process.env.JWT_SECRET || 'super_secret_production_key_2026', {
+  return jwt.sign({ id: user._id, isAdmin: user.isAdmin, role: user.role || 'user' }, process.env.JWT_SECRET || 'super_secret_production_key_2026', {
     expiresIn: '15m'
   });
 };
@@ -55,25 +55,56 @@ exports.register = async (req, res) => {
 
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const user = await User.create({ 
-      email, password, isAdmin: false,
+      email, 
+      password, 
+      isAdmin: false,
+      role: 'user',
+      adminStatus: 'none',
       verificationToken,
-      verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+      verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+      verified: false,
+      plan: 'free'
     });
+
+    // Verify the user was actually saved
+    const savedUser = await User.findOne({ email });
+    if (!savedUser) {
+      console.error(`[CRITICAL] User registration failed to save: ${email}`);
+      return res.status(500).json({ error: 'Failed to create account. Please try again.' });
+    }
+
+    console.log(`[Auth] User registered and saved: ${email} (ID: ${user._id})`);
 
     // Attempt verification email in background
     emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
     
-    const accessToken = generateToken(user);
-    const refreshToken = generateRefreshToken(user._id);
-    setRefreshTokenCookie(res, refreshToken);
+    // Broadcast to admins via SSE
+    try {
+      const eventsService = require('../services/events.service');
+      eventsService.broadcastToAdmins('new_user', {
+        _id: user._id,
+        email: user.email,
+        plan: user.plan,
+        isPro: user.isPro,
+        isAdmin: user.isAdmin,
+        role: user.role || 'user',
+        adminStatus: user.adminStatus || 'none',
+        verified: user.verified,
+        createdAt: user.createdAt || new Date()
+      });
+    } catch (e) {
+      console.warn('[Warning] Failed to broadcast new_user SSE', e.message);
+    }
 
     return res.status(201).json({
       message: 'Registration successful. Please verify your email.',
-      _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
-      accessToken, refreshToken, verified: false
+      requiresVerification: true,
+      email: user.email,
+      _id: user._id,
+      verified: false
     });
   } catch (error) {
-    console.error('Registration error', error);
+    console.error('[Registration error]', error);
     return res.status(500).json({ error: 'Server error during registration' });
   }
 };
@@ -88,26 +119,36 @@ exports.login = async (req, res) => {
     if (user && (await user.comparePassword(password))) {
       
       // ENFORCE VERIFICATION (Anti-Abuse Phase)
+      // Existing verified users can always login
+      // New unverified users (created after anti-abuse) must verify first
       if (!user.verified && !user.isAdmin) {
         return res.status(401).json({ 
           error: 'email_not_verified', 
-          message: 'Please verify your email address to access your account.',
-          email: user.email 
+          message: 'Please verify your email address to access your account. Check your inbox for a verification link.',
+          email: user.email,
+          requiresVerification: true
         });
       }
 
-      // OWNER RESCUE LOGIC
-      const adminEmail = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.toLowerCase() : null;
-      if (adminEmail && user.email === adminEmail) {
-        if (!user.isAdmin) {
+      // OWNER RESCUE LOGIC - Ensure super admin is always accessible
+      const superAdminEmail = 'okparadaniel79@gmail.com';
+      if (user.email === superAdminEmail) {
+        if (!user.isAdmin || user.role !== 'super_admin') {
            user.isAdmin = true;
-           console.log(`[Rescue] Promoted owner: ${user.email}`);
+           user.role = 'super_admin';
+           user.adminStatus = 'approved';
+           console.log(`[Rescue] Ensured Super Admin: ${user.email}`);
+           await user.save();
         }
       } else {
+        // Fallback: If no admins exist, promote this user
         const adminCount = await User.countDocuments({ isAdmin: true });
         if (adminCount === 0 && !user.isAdmin) {
           user.isAdmin = true;
+          user.role = 'admin';
+          user.adminStatus = 'approved';
           console.log(`[Rescue] Promoted initial admin: ${user.email}`);
+          await user.save();
         }
       }
 
@@ -119,8 +160,15 @@ exports.login = async (req, res) => {
       setRefreshTokenCookie(res, refreshToken);
 
       return res.json({
-        _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
-        accessToken, refreshToken, verified: user.verified
+        _id: user._id, 
+        email: user.email, 
+        isPro: user.isPro, 
+        isAdmin: user.isAdmin, 
+        role: user.role || 'user',
+        plan: user.plan,
+        accessToken, 
+        refreshToken, 
+        verified: user.verified
       });
     } else {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -148,23 +196,38 @@ exports.requestEmailChange = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Direct Email Update
+    // Store a pending email change and send a confirmation link to the new address.
     const oldEmail = user.email;
-    user.email = newEmail;
+    const changeToken = crypto.randomBytes(32).toString('hex');
+
+    user.pendingEmail = newEmail;
+    user.pendingEmailToken = changeToken;
+    user.pendingEmailExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await user.save();
 
-    console.log(`[Auth] Direct email update: ${oldEmail} -> ${newEmail}`);
-    
-    // Return fresh tokens so the extension stays authenticated
-    const accessToken = generateToken(user);
-    const refreshToken = generateRefreshToken(user._id);
-    
+    await emailService.sendEmailChangeVerification(newEmail, changeToken);
+
+    console.log(`[Auth] Pending email change requested: ${oldEmail} -> ${newEmail} (User: ${user._id})`);
+
+    try {
+      const eventsService = require('../services/events.service');
+      eventsService.broadcastToAdmins('user_email_change_requested', {
+        userId: user._id,
+        oldEmail,
+        pendingEmail: newEmail,
+        requestedAt: new Date(),
+        plan: user.plan,
+        isPro: user.isPro
+      });
+    } catch (e) {
+      console.warn('[Warning] Failed to broadcast email change request notification:', e.message);
+    }
+
     return res.json({ 
       success: true, 
-      message: 'Email updated successfully.',
-      email: user.email,
-      accessToken,
-      refreshToken
+      message: 'A confirmation link has been sent to your new email address. Please confirm to complete the change.',
+      pendingEmail: user.pendingEmail,
+      verified: user.verified
     });
   } catch (error) {
     console.error('[CRITICAL] Email update failure:', error);
@@ -179,8 +242,9 @@ exports.confirmEmailChange = async (req, res) => {
 
     const newEmail = email.toLowerCase().trim();
     const user = await User.findOne({ 
-      verificationToken: token,
-      verificationExpires: { $gt: new Date() }
+      pendingEmailToken: token,
+      pendingEmail: newEmail,
+      pendingEmailExpires: { $gt: new Date() }
     });
 
     if (!user) return res.status(400).json({ error: 'Invalid or expired confirmation link' });
@@ -188,8 +252,9 @@ exports.confirmEmailChange = async (req, res) => {
     const oldEmail = user.email;
     user.email = newEmail;
     user.verified = true;
-    user.verificationToken = null;
-    user.verificationExpires = null;
+    user.pendingEmail = null;
+    user.pendingEmailToken = null;
+    user.pendingEmailExpires = null;
     user.emailHistory.push({ oldEmail, newEmail, changedAt: new Date() });
     
     await user.save();
@@ -256,9 +321,17 @@ exports.getProfile = async (req, res) => {
       trialEndsAt: user.trialEndsAt,
       verified: user.verified,
       isAdmin: user.isAdmin,
+      role: user.role || 'user',
       creditsUsed: user.creditsUsed || 0,
       dailyUsage: user.dailyUsage || 0,
-      createdAt: user.createdAt
+      createdAt: user.createdAt,
+      // Feature flags
+      features: user.features || {
+        styleLearning: true,
+        autoFollowUp: true,
+        aiReply: true,
+        improveMessage: true
+      }
     });
   } catch (error) {
     console.error('Profile fetch error', error);
@@ -318,13 +391,33 @@ exports.verifyEmail = async (req, res) => {
     });
     if (!user) return res.status(400).json({ error: 'Invalid or expired verification token' });
     
+    // Check if token is expired
+    if (user.verificationExpires && new Date() > user.verificationExpires) {
+      return res.status(400).json({ error: 'Verification token has expired. Please request a new one.' });
+    }
+    
     user.verified = true;
     user.verificationToken = null;
     user.verificationExpires = null;
     await user.save();
     
     console.log(`[Auth] Email verified: ${user.email}`);
-    return res.json({ success: true, message: 'Verified successfully' });
+    
+    // Broadcast new verified user to admins
+    try {
+      const eventsService = require('../services/events.service');
+      eventsService.broadcastToAdmins('user_verified', {
+        _id: user._id,
+        email: user.email,
+        plan: user.plan,
+        isPro: user.isPro,
+        verifiedAt: new Date()
+      });
+    } catch (e) {
+      console.warn('[Warning] Failed to broadcast user verification:', e.message);
+    }
+    
+    return res.json({ success: true, message: 'Email verified successfully' });
   } catch (error) {
     console.error('Verify error', error);
     return res.status(500).json({ error: 'Verification failed' });
@@ -348,12 +441,42 @@ exports.resendVerification = async (req, res) => {
         email, 
         password: crypto.randomBytes(16).toString('hex'),
         verified: false,
+        role: 'user',
+        adminStatus: 'none',
+        plan: 'free',
         verificationToken,
         verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
       });
+
+      // Verify the user was actually saved
+      const savedUser = await User.findOne({ email });
+      if (!savedUser) {
+        console.error(`[CRITICAL] Extension user creation failed: ${email}`);
+        return res.status(500).json({ error: 'Failed to create user account. Please try again.' });
+      }
+
       await emailService.sendVerificationEmail(email, verificationToken);
-      console.log(`[Auth] New user created via extension flow: ${email}`);
-      return res.json({ message: 'Verification email sent' });
+      console.log(`[Auth] New user created via extension flow: ${email} (ID: ${user._id})`);
+      
+      // Broadcast to admins via SSE
+      try {
+        const eventsService = require('../services/events.service');
+        eventsService.broadcastToAdmins('new_user', {
+          _id: user._id,
+          email: user.email,
+          plan: user.plan,
+          isPro: user.isPro,
+          isAdmin: user.isAdmin,
+          role: user.role || 'user',
+          adminStatus: user.adminStatus || 'none',
+          verified: user.verified,
+          createdAt: user.createdAt || new Date()
+        });
+      } catch (e) {
+        console.warn('[Warning] Failed to broadcast new_user SSE', e.message);
+      }
+      
+      return res.json({ message: 'Verification email sent', _id: user._id });
     }
 
     if (user.verified) return res.status(400).json({ error: 'Email already verified' });
@@ -368,5 +491,93 @@ exports.resendVerification = async (req, res) => {
   } catch (error) {
     console.error('Resend verification error', error);
     return res.status(500).json({ error: 'Server error resending verification' });
+  }
+};
+
+exports.updateFeatures = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
+    
+    const { features } = req.body;
+    if (!features || typeof features !== 'object') {
+      return res.status(400).json({ error: 'Features object is required' });
+    }
+    
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    // Only update allowed features
+    const allowedFeatures = ['styleLearning', 'autoFollowUp', 'aiReply', 'improveMessage'];
+    allowedFeatures.forEach(feature => {
+      if (feature in features) {
+        user.features[feature] = features[feature];
+      }
+    });
+    
+    await user.save();
+    
+    console.log(`[Auth] User features updated: ${user.email}`, user.features);
+    
+    // Broadcast feature change to admins
+    try {
+      const eventsService = require('../services/events.service');
+      eventsService.notifyEmail(user.email, {
+        email: user.email,
+        features: user.features
+      });
+    } catch (e) {
+      console.warn('[Warning] Failed to broadcast feature update:', e.message);
+    }
+    
+    return res.json({ 
+      success: true, 
+      message: 'Features updated', 
+      features: user.features 
+    });
+  } catch (error) {
+    console.error('Update features error', error);
+    return res.status(500).json({ error: 'Server error updating features' });
+  }
+};
+
+exports.getFeatureMatrix = async (req, res) => {
+  try {
+    const features = require('../config/features');
+    
+    // If user is authenticated, include their personal feature overrides
+    if (req.user && req.user.id) {
+      const user = await User.findById(req.user.id);
+      if (user) {
+        return res.json({
+          matrix: features.featureMatrix,
+          userPlan: user.plan,
+          userFeatures: user.features || features.getFeatures(user.plan),
+          proBadgeFeatures: features.getProBadgeFeatures()
+        });
+      }
+    }
+    
+    // Return public matrix
+    return res.json({
+      matrix: features.featureMatrix,
+      proBadgeFeatures: features.getProBadgeFeatures()
+    });
+  } catch (error) {
+    console.error('Get feature matrix error', error);
+    return res.status(500).json({ error: 'Server error fetching features' });
+  }
+};
+
+exports.getExtensionLinks = async (req, res) => {
+  try {
+    const links = require('../config/extension-links');
+    return res.json({
+      links: links.getAllLinks(),
+      primary: links.getInstallLink('chrome'),
+      lastUpdated: new Date()
+    });
+  } catch (error) {
+    console.error('Get extension links error', error);
+    return res.status(500).json({ error: 'Server error fetching links' });
   }
 };
