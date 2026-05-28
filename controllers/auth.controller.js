@@ -131,7 +131,7 @@ exports.login = async (req, res) => {
       }
 
       // OWNER RESCUE LOGIC - Ensure super admin is always accessible
-      const superAdminEmail = 'okparadaniel79@gmail.com';
+      const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'okparadaniel79@gmail.com';
       if (user.email === superAdminEmail) {
         if (!user.isAdmin || user.role !== 'super_admin') {
            user.isAdmin = true;
@@ -139,16 +139,6 @@ exports.login = async (req, res) => {
            user.adminStatus = 'approved';
            console.log(`[Rescue] Ensured Super Admin: ${user.email}`);
            await user.save();
-        }
-      } else {
-        // Fallback: If no admins exist, promote this user
-        const adminCount = await User.countDocuments({ isAdmin: true });
-        if (adminCount === 0 && !user.isAdmin) {
-          user.isAdmin = true;
-          user.role = 'admin';
-          user.adminStatus = 'approved';
-          console.log(`[Rescue] Promoted initial admin: ${user.email}`);
-          await user.save();
         }
       }
 
@@ -386,10 +376,19 @@ exports.verifyEmail = async (req, res) => {
     const { token, email } = req.query;
     if (!token || !email) return res.status(400).json({ error: 'Token and email required' });
     const user = await User.findOne({ 
-      email: email.toLowerCase().trim(), 
-      verificationToken: token 
+      email: email.toLowerCase().trim()
     });
-    if (!user) return res.status(400).json({ error: 'Invalid or expired verification token' });
+
+    if (!user) return res.status(400).json({ error: 'User not found' });
+
+    // If already verified, just return success
+    if (user.verified) {
+      return res.json({ success: true, message: 'Email is already verified' });
+    }
+
+    if (user.verificationToken !== token) {
+      return res.status(400).json({ error: 'Invalid verification token' });
+    }
     
     // Check if token is expired
     if (user.verificationExpires && new Date() > user.verificationExpires) {
