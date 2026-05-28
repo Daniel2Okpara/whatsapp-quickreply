@@ -51,108 +51,133 @@
             const data = JSON.parse(ev.data || '{}');
             storageSet({ subscription: data }, () => {
               applyProUI(); // re-apply Pro UI immediately
-            storageGet(['email', 'verified'], (res) => {
-              const email = res && res.email;
-              const verified = res && res.verified;
-
-              if (!email || !verified) {
-                const hostEl = document.createElement('div');
-                hostEl.id = 'waqr-blocker-host';
-                hostEl.setAttribute('style', 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999999; pointer-events: auto;');
-                document.documentElement.appendChild(hostEl);
-
-                const shadow = hostEl.attachShadow({ mode: 'open' });
-                const styleEl = document.createElement('style');
-                styleEl.textContent = `
-                  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-                  .blocker-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); background: rgba(15,23,42,0.9); display:flex; align-items:center; justify-content:center; padding:20px; }
-                  .blocker-card { background:#fff; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,0.15); padding:24px; max-width:320px; width:100%; text-align:center; border: 1px solid #e2e8f0; }
-                  .blocker-logo{ width:48px; height:48px; margin:0 auto 16px; border-radius:10px; }
-                  .blocker-title{ font-size:18px; font-weight:700; color:#0f172a; margin-bottom:8px; }
-                  .blocker-subtitle{ color:#475569; font-size:13px; margin-bottom:16px; line-height:1.5 }
-                  .blocker-input{ width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:10px; font-size:14px; box-sizing: border-box; }
-                  .blocker-btn{ width:100%; padding:10px; border-radius:8px; background:#25D366; color:#fff; font-weight:600; border:none; cursor:pointer; font-size:14px; transition: background 0.2s; }
-                  .blocker-btn:hover { background: #1da851; }
-                  .blocker-secondary{ width:100%; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; cursor:pointer; font-size:14px; color: #475569; margin-top: 8px; transition: background 0.2s; }
-                  .blocker-secondary:hover { background: #f1f5f9; }
-                  .blocker-status{ min-height:20px; margin-top:12px; font-size:13px; font-weight: 500; }
-                `;
-                shadow.appendChild(styleEl);
-
-                const overlay = document.createElement('div');
-                overlay.className = 'blocker-overlay';
-                const logoUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon128.png') : 'icons/icon128.png';
-                overlay.innerHTML = `
-                  <div class="blocker-card" id="waqr-activate-card">
-                    <img src="${logoUrl}" class="blocker-logo" />
-                    <div class="blocker-title">WA QuickReply</div>
-                    <div class="blocker-subtitle">Input your email for verification.</div>
-                    <input id="waqr-activate-email" class="blocker-input" type="email" placeholder="you@example.com" value="${email || ''}" />
-                    <button id="waqr-activate-send" class="blocker-btn">Verify Email</button>
-                    <div id="waqr-activate-status" class="blocker-status"></div>
-                  </div>
-                `;
-                shadow.appendChild(overlay);
-
-                const emailInput = shadow.querySelector('#waqr-activate-email');
-                const sendButton = shadow.querySelector('#waqr-activate-send');
-                const statusEl = shadow.querySelector('#waqr-activate-status');
-                const cardEl = shadow.querySelector('#waqr-activate-card');
-
-                const updateStatus = (text, isError = false) => { statusEl.textContent = text; statusEl.style.color = isError ? '#dc2626' : '#25D366'; };
-
-                sendButton.addEventListener('click', async () => {
-                  const emailValue = (emailInput.value || '').trim().toLowerCase();
-                  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                  if (!emailRegex.test(emailValue)) return updateStatus('Please enter a valid email address.', true);
-
-                  sendButton.disabled = true; sendButton.textContent = 'Sending...'; updateStatus('');
-                  try {
-                    const resp = await fetch(`${BACKEND_URL}/auth/resend-verification`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: emailValue }) });
-                    const result = await resp.json().catch(() => ({}));
-                    if (!resp.ok) { updateStatus(result.error || 'Unable to send verification link.', true); sendButton.disabled = false; sendButton.textContent = 'Verify Email'; return; }
-
-                    chrome.storage.local.set({ email: emailValue, verified: false }, () => {
-                      // Update UI to show the email has been sent
-                      cardEl.innerHTML = `
-                        <img src="${logoUrl}" class="blocker-logo" />
-                        <div class="blocker-title">Link Sent!</div>
-                        <div class="blocker-subtitle" style="font-size: 14px; color: #334155;">A verification link has been sent to <b>${emailValue}</b>.</div>
-                        <div class="blocker-subtitle" style="font-size: 13px; color: #64748b; margin-top: 10px;">Once verified, return back to the extension on WhatsApp.</div>
-                        <button id="waqr-activate-open-gmail" class="blocker-secondary">Open Gmail</button>
-                        <div id="waqr-activate-status" class="blocker-status" style="color: #25D366;">Waiting for verification...</div>
-                      `;
-                      const newStatusEl = shadow.querySelector('#waqr-activate-status');
-                      shadow.querySelector('#waqr-activate-open-gmail').addEventListener('click', () => { window.open('https://mail.google.com', '_blank'); });
-
-                      pollVerificationStatus(emailValue, async () => {
-                        newStatusEl.textContent = 'Verified! Unlocking...';
-                        await chrome.storage.local.set({ verified: true });
-                        setTimeout(() => { hostEl.remove(); initializeExtension(); }, 900);
-                      }, (message) => { newStatusEl.textContent = message; });
-                    });
-                  } catch (err) {
-                    updateStatus('Network error. Please try again.', true); sendButton.disabled = false; sendButton.textContent = 'Verify Email';
-                  }
-                });
-              } else {
-                initializeExtension();
-              }
             });
+          } catch (e) {
+          }
+        });
+        es.onerror = (err) => {
+          es.close();
+          setTimeout(() => setupSSE(), 5000); // reconnect
+        };
+        window.addEventListener('unload', () => es.close());
+      } catch (e) {
+      }
+    });
+  })();
 
-            function pollVerificationStatus(email, onVerified, onUpdate) {
-              let attempts = 0; const maxAttempts = 24; const delay = 3000;
-              const interval = setInterval(async () => {
-                attempts += 1; if (attempts > maxAttempts) { clearInterval(interval); onUpdate('Still waiting for verification. Please check your inbox.'); return; }
-                try {
-                  const resp = await fetch(`${BACKEND_URL}/auth/verification-status?email=${encodeURIComponent(email)}`);
-                  if (!resp.ok) return;
-                  const data = await resp.json();
-                  if (data.verified) { clearInterval(interval); onVerified(data); }
-                  else { onUpdate('Waiting for verification...'); }
-                } catch (err) { /* ignore, retry */ }
-              }, delay);
-            }
+  // Inject styles
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `
+    :host {
+      --waqr-primary: #27a55e;
+      --waqr-primary-dark: #0f7a52;
+      --waqr-bg: #ffffff;
+      --waqr-text: #121212;
+      --waqr-text-light: #5e6d79;
+      --waqr-border: #d8e7df;
+      --waqr-radius: 12px;
+      --waqr-pro: linear-gradient(135.22deg, #ff9b05 0%, #ffc640 100%);
+    }
+
+    #waqr-panel.pro-theme {
+      --waqr-primary: #f59e0b;
+      border: 2px solid #f59e0b;
+    }
+
+    #waqr-panel.pro-theme #waqr-header {
+      background: var(--waqr-pro);
+    }
+
+    #waqr-panel.pro-theme .waqr-btn:not(.secondary) {
+      background: var(--waqr-pro);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    }
+                                                                                                                                                                                                     
+    button { cursor: pointer; transition: all 0.2s ease; }
+    button:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    .waqr-transcribe-btn-chat {
+      background: #a855f7 !important;
+      color: white !important;
+      border: 1px solid #7e22ce !important;
+      padding: 5px 12px !important;
+      border-radius: 14px !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      cursor: pointer !important;
+      margin-top: 6px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      transition: all 0.2s !important;
+      box-shadow: 0 3px 8px rgba(168, 85, 247, 0.4) !important;
+      pointer-events: auto !important;
+      z-index: 100 !important;
+    }
+    .waqr-transcribe-btn-chat:hover {
+      background: #9333ea;
+      transform: scale(1.02);
+    }
+    .waqr-transcribe-btn-chat.loading {
+      opacity: 0.7;
+      cursor: wait;
+    }
+
+    #waqr-fab {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 56px;
+      height: 56px;
+      background: var(--waqr-primary);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 999999;
+      border: none;
+      pointer-events: auto;
+      will-change: transform;
+      transform: translate3d(0,0,0);
+    }
+
+    #waqr-fab:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
+    #waqr-fab.dragging { cursor: grabbing; opacity: 0.9; }
+
+    #waqr-shortcut-popup {
+      position: fixed;
+      bottom: 72px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 320px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+      z-index: 999999;
+      pointer-events: auto;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--waqr-border);
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    #waqr-shortcut-popup.open { display: flex; }
+    .waqr-sc-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 1px solid #f0f0f0;
       transition: background 0.12s;
     }
     .waqr-sc-item:last-child { border-bottom: none; }
@@ -2178,86 +2203,106 @@
     syncPlanState();
   }
 
-  storageGet(['email'], (res) => {
+  storageGet(['email', 'verified'], (res) => {
     const email = res && res.email;
-    if (!email) {
+    const verified = res && res.verified;
+
+    if (!email || !verified) {
       const hostEl = document.createElement('div');
-      hostEl.id = 'waqr-onboarding-host';
-      hostEl.setAttribute('style', 'position: fixed; bottom: 24px; right: 24px; z-index: 999999; pointer-events: auto;');
+      hostEl.id = 'waqr-blocker-host';
+      hostEl.setAttribute('style', 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999999; pointer-events: auto;');
       document.documentElement.appendChild(hostEl);
 
       const shadow = hostEl.attachShadow({ mode: 'open' });
       const styleEl = document.createElement('style');
       styleEl.textContent = `
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        .onboarding-modal { background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15); padding: 32px; max-width: 380px; width: 100%; animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .onboarding-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-        .onboarding-title { font-size: 18px; font-weight: 700; color: #0f172a; }
-        .onboarding-subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; line-height: 1.5; }
-        .onboarding-input-group { margin-bottom: 20px; }
-        .onboarding-input { width: 100%; padding: 12px 16px; font-size: 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; background: white; color: #1e293b; transition: all 0.2s; }
-        .onboarding-input:focus { outline: none; border-color: #27a55e; box-shadow: 0 0 0 3px rgba(39, 165, 94, 0.1); }
-        .onboarding-btn { width: 100%; padding: 12px 16px; font-size: 15px; font-weight: 600; background: linear-gradient(135deg, #27a55e 0%, #0f7a52 100%); color: white; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(39, 165, 94, 0.2); }
-        .onboarding-error { color: #dc2626; font-size: 13px; margin-top: 8px; display: none; }
+        .blocker-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); background: rgba(15,23,42,0.9); display:flex; align-items:center; justify-content:center; padding:20px; }
+        .blocker-card { background:#fff; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,0.15); padding:24px; max-width:320px; width:100%; text-align:center; border: 1px solid #e2e8f0; }
+        .blocker-logo{ width:48px; height:48px; margin:0 auto 16px; border-radius:10px; }
+        .blocker-title{ font-size:18px; font-weight:700; color:#0f172a; margin-bottom:8px; }
+        .blocker-subtitle{ color:#475569; font-size:13px; margin-bottom:16px; line-height:1.5 }
+        .blocker-input{ width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:10px; font-size:14px; box-sizing: border-box; }
+        .blocker-btn{ width:100%; padding:10px; border-radius:8px; background:#25D366; color:#fff; font-weight:600; border:none; cursor:pointer; font-size:14px; transition: background 0.2s; }
+        .blocker-btn:hover { background: #1da851; }
+        .blocker-secondary{ width:100%; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; cursor:pointer; font-size:14px; color: #475569; margin-top: 8px; transition: background 0.2s; }
+        .blocker-secondary:hover { background: #f1f5f9; }
+        .blocker-status{ min-height:20px; margin-top:12px; font-size:13px; font-weight: 500; }
       `;
       shadow.appendChild(styleEl);
 
-      const modal = document.createElement('div');
-      modal.className = 'onboarding-modal';
-      const onboardIconUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon128.png') : 'icons/icon128.png';
-      modal.innerHTML = `
-        <div class="onboarding-header">
-          <img src="${onboardIconUrl}" alt="WA QuickReply" style="width:48px;height:48px;border-radius:12px;object-fit:cover;flex-shrink:0;" />
-          <div>
-            <div class="onboarding-title">WA QuickReply</div>
-            <div style="font-size: 12px; color: #94a3b8;">Activate to get started</div>
-          </div>
+      const overlay = document.createElement('div');
+      overlay.className = 'blocker-overlay';
+      const logoUrl = chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon128.png') : 'icons/icon128.png';
+      overlay.innerHTML = `
+        <div class="blocker-card" id="waqr-activate-card">
+          <img src="${logoUrl}" class="blocker-logo" />
+          <div class="blocker-title">WA QuickReply</div>
+          <div class="blocker-subtitle">Input your email for verification.</div>
+          <input id="waqr-activate-email" class="blocker-input" type="email" placeholder="you@example.com" value="${email || ''}" />
+          <button id="waqr-activate-send" class="blocker-btn">Verify Email</button>
+          <div id="waqr-activate-status" class="blocker-status"></div>
         </div>
-        <div class="onboarding-subtitle">Enter your email to unlock templates, AI replies.</div>
-        <div class="onboarding-input-group">
-          <input type="email" class="onboarding-input" id="onboard-email" placeholder="you@example.com" autocomplete="email">
-          <div class="onboarding-error" id="onboard-error"></div>
-        </div>
-        <button class="onboarding-btn" id="onboard-activate">Activate Extension</button>
       `;
-      shadow.appendChild(modal);
+      shadow.appendChild(overlay);
 
-      const input = shadow.querySelector('#onboard-email');
-      const btn = shadow.querySelector('#onboard-activate');
-      const error = shadow.querySelector('#onboard-error');
+      const emailInput = shadow.querySelector('#waqr-activate-email');
+      const sendButton = shadow.querySelector('#waqr-activate-send');
+      const statusEl = shadow.querySelector('#waqr-activate-status');
+      const cardEl = shadow.querySelector('#waqr-activate-card');
 
-      btn.addEventListener('click', () => {
-        const val = (input.value || '').trim().toLowerCase();
-        const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
-        if (!ok) {
-          error.textContent = 'Please enter a valid email';
-          error.style.display = 'block';
-          input.focus();
-          return;
+      const updateStatus = (text, isError = false) => { statusEl.textContent = text; statusEl.style.color = isError ? '#dc2626' : '#25D366'; };
+      const BACKEND_URL = 'https://wa-quickreply-server.onrender.com';
+
+      sendButton.addEventListener('click', async () => {
+        const emailValue = (emailInput.value || '').trim().toLowerCase();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(emailValue)) return updateStatus('Please enter a valid email address.', true);
+
+        sendButton.disabled = true; sendButton.textContent = 'Sending...'; updateStatus('');
+        try {
+          const resp = await fetch(`${BACKEND_URL}/auth/resend-verification`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: emailValue }) });
+          const result = await resp.json().catch(() => ({}));
+          if (!resp.ok) { updateStatus(result.error || 'Unable to send verification link.', true); sendButton.disabled = false; sendButton.textContent = 'Verify Email'; return; }
+
+          storageSet({ email: emailValue, verified: false }, () => {
+            // Update UI to show the email has been sent
+            cardEl.innerHTML = `
+              <img src="${logoUrl}" class="blocker-logo" />
+              <div class="blocker-title">Link Sent!</div>
+              <div class="blocker-subtitle" style="font-size: 14px; color: #334155;">A verification link has been sent to <b>${emailValue}</b>.</div>
+              <div class="blocker-subtitle" style="font-size: 13px; color: #64748b; margin-top: 10px;">Once verified, return back to the extension on WhatsApp.</div>
+              <button id="waqr-activate-open-gmail" class="blocker-secondary">Open Gmail</button>
+              <div id="waqr-activate-status" class="blocker-status" style="color: #25D366;">Waiting for verification...</div>
+            `;
+            const newStatusEl = shadow.querySelector('#waqr-activate-status');
+            shadow.querySelector('#waqr-activate-open-gmail').addEventListener('click', () => { window.open('https://mail.google.com', '_blank'); });
+
+            pollVerificationStatus(emailValue, async () => {
+              newStatusEl.textContent = 'Verified! Unlocking...';
+              storageSet({ verified: true }, () => {
+                setTimeout(() => { hostEl.remove(); initializeExtension(); }, 900);
+              });
+            }, (message) => { newStatusEl.textContent = message; });
+          });
+        } catch (err) {
+          updateStatus('Network error. Please try again.', true); sendButton.disabled = false; sendButton.textContent = 'Verify Email';
         }
-        btn.disabled = true;
-        btn.textContent = 'Activating...';
-        storageSet({ email: val }, () => {
-          btn.textContent = 'Success! ✅';
-          btn.style.background = '#059669';
-          
-          // Small delay for visual confirmation before initializing and removing
-          setTimeout(() => {
-            initializeExtension();
-            if (hostEl && hostEl.parentNode) {
-              hostEl.remove();
-            }
-          }, 1200);
-        });
       });
-
-      input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') btn.click();
-        if (error.style.display === 'block') error.style.display = 'none';
-      });
-
-      setTimeout(() => input.focus(), 100);
+      
+      function pollVerificationStatus(email, onVerified, onUpdate) {
+        let attempts = 0; const maxAttempts = 24; const delay = 3000;
+        const interval = setInterval(async () => {
+          attempts += 1; if (attempts > maxAttempts) { clearInterval(interval); onUpdate('Still waiting for verification. Please check your inbox.'); return; }
+          try {
+            const resp = await fetch(`${BACKEND_URL}/auth/verification-status?email=${encodeURIComponent(email)}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.verified) { clearInterval(interval); onVerified(data); }
+            else { onUpdate('Waiting for verification...'); }
+          } catch (err) { /* ignore, retry */ }
+        }, delay);
+      }
     } else {
       initializeExtension();
     }
