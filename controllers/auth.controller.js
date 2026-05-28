@@ -155,6 +155,7 @@ exports.login = async (req, res) => {
         isPro: user.isPro, 
         isAdmin: user.isAdmin, 
         role: user.role || 'user',
+        adminStatus: user.adminStatus || 'none',
         plan: user.plan,
         accessToken, 
         refreshToken, 
