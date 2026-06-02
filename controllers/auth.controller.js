@@ -187,37 +187,21 @@ exports.requestEmailChange = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Store a pending email change and send a confirmation link to the new address.
     const oldEmail = user.email;
-    const changeToken = crypto.randomBytes(32).toString('hex');
-
-    user.pendingEmail = newEmail;
-    user.pendingEmailToken = changeToken;
-    user.pendingEmailExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    user.email = newEmail;
+    user.verified = true;
+    user.pendingEmail = null;
+    user.pendingEmailToken = null;
+    user.pendingEmailExpires = null;
+    user.emailHistory.push({ oldEmail, newEmail, changedAt: new Date() });
     await user.save();
 
-    await emailService.sendEmailChangeVerification(newEmail, changeToken);
-
-    console.log(`[Auth] Pending email change requested: ${oldEmail} -> ${newEmail} (User: ${user._id})`);
-
-    try {
-      const eventsService = require('../services/events.service');
-      eventsService.broadcastToAdmins('user_email_change_requested', {
-        userId: user._id,
-        oldEmail,
-        pendingEmail: newEmail,
-        requestedAt: new Date(),
-        plan: user.plan,
-        isPro: user.isPro
-      });
-    } catch (e) {
-      console.warn('[Warning] Failed to broadcast email change request notification:', e.message);
-    }
+    console.log(`[Auth] Email changed immediately for authenticated user: ${oldEmail} -> ${newEmail} (User: ${user._id})`);
 
     return res.json({ 
       success: true, 
-      message: 'A confirmation link has been sent to your new email address. Please confirm to complete the change.',
-      pendingEmail: user.pendingEmail,
+      message: 'Email updated successfully',
+      email: user.email,
       verified: user.verified
     });
   } catch (error) {
