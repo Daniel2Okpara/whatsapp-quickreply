@@ -53,7 +53,7 @@ exports.register = async (req, res) => {
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ error: 'User already exists' });
 
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationToken = crypto.randomBytes(16).toString('hex');
     const user = await User.create({ 
       email, 
       password, 
@@ -212,19 +212,18 @@ exports.requestEmailChange = async (req, res) => {
 
 exports.confirmEmailChange = async (req, res) => {
   try {
-    const { token, email } = req.query;
-    if (!token || !email) return res.status(400).json({ error: 'Token and new email required' });
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ error: 'Token required' });
 
-    const newEmail = email.toLowerCase().trim();
     const user = await User.findOne({ 
       pendingEmailToken: token,
-      pendingEmail: newEmail,
       pendingEmailExpires: { $gt: new Date() }
     });
 
     if (!user) return res.status(400).json({ error: 'Invalid or expired confirmation link' });
 
     const oldEmail = user.email;
+    const newEmail = user.pendingEmail;
     user.email = newEmail;
     user.verified = true;
     user.pendingEmail = null;
@@ -359,10 +358,16 @@ exports.refresh = async (req, res) => {
 exports.verifyEmail = async (req, res) => {
   try {
     const { token, email } = req.query;
-    if (!token || !email) return res.status(400).json({ error: 'Token and email required' });
-    const user = await User.findOne({ 
-      email: email.toLowerCase().trim()
-    });
+    if (!token) return res.status(400).json({ error: 'Token required' });
+
+    let user;
+    if (email) {
+      user = await User.findOne({ email: email.toLowerCase().trim() });
+    }
+
+    if (!user) {
+      user = await User.findOne({ verificationToken: token });
+    }
 
     if (!user) return res.status(400).json({ error: 'User not found' });
 
@@ -410,17 +415,27 @@ exports.verifyEmail = async (req, res) => {
 
 exports.resendVerification = async (req, res) => {
   try {
-    let { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email is required' });
-    email = email.toLowerCase().trim();
-    if (!validator.isEmail(email)) return res.status(400).json({ error: 'Invalid email format' });
-    if (isDisposableEmail(email)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
+    let { email, token } = req.body;
 
-    let user = await User.findOne({ email });
+    if (!email && !token) {
+      return res.status(400).json({ error: 'Email or verification token is required' });
+    }
+
+    let user;
+    if (token) {
+      user = await User.findOne({ verificationToken: token });
+    }
+
+    if (!user && email) {
+      email = email.toLowerCase().trim();
+      if (!validator.isEmail(email)) return res.status(400).json({ error: 'Invalid email format' });
+      if (isDisposableEmail(email)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
+      user = await User.findOne({ email });
+    }
     
     // Create user if they don't exist (Extension-First Flow)
     if (!user) {
-      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationToken = crypto.randomBytes(16).toString('hex');
       user = await User.create({ 
         email, 
         password: crypto.randomBytes(16).toString('hex'),
@@ -465,12 +480,12 @@ exports.resendVerification = async (req, res) => {
 
     if (user.verified) return res.status(400).json({ error: 'Email already verified' });
 
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationToken = crypto.randomBytes(16).toString('hex');
     user.verificationToken = verificationToken;
     user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     await user.save();
 
-    await emailService.sendVerificationEmail(email, verificationToken);
+    await emailService.sendVerificationEmail(user.email, verificationToken);
     return res.json({ message: 'Verification email sent' });
   } catch (error) {
     console.error('Resend verification error', error);
