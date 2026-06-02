@@ -120,6 +120,10 @@ app.post('/transcribe', aiLimiter, aiRoutes);
 const adminRoutes = require('./routes/admin.routes');
 app.use('/admin', adminRoutes);
 
+// Extension compatibility routes (accept token in body/query for Chrome extension clients)
+const extensionRoutes = require('./routes/extension.routes');
+app.use('/extension', extensionRoutes);
+
 // Serve admin static panel at /admin-static
 app.use('/admin-static', express.static(path.join(__dirname, 'public')));
 app.get('/admin-panel', (req, res) => {
@@ -147,6 +151,30 @@ app.get('/events', (req, res) => {
   });
 });
 
+// Admin Server-Sent Events endpoint (Real-time updates)
+const { protect, requireAdmin } = require('./middleware/auth.middleware');
+const sseTokenSupport = (req, res, next) => {
+  if (req.query.token && !req.headers.authorization) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+};
+
+app.get('/admin-events', sseTokenSupport, protect, requireAdmin, (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+  res.write('\n');
+
+  eventsService.addAdminClient(res);
+
+  req.on('close', () => {
+    eventsService.removeAdminClient(res);
+  });
+});
+
 // Admin dashboard moved to standalone frontend app; do not serve admin UI here.
 
 // Database connection
@@ -155,6 +183,14 @@ const connectDB = async () => {
   try {
     const conn = await mongoose.connect(uri);
     console.log(`[MongoDB]: Connected to ${conn.connection.host}`);
+    
+    // Seed Super Admin
+    try {
+      const adminController = require('./controllers/admin.controller');
+      await adminController.seedSuperAdmin();
+    } catch (e) {
+      console.error('[Admin Seeding Error]:', e);
+    }
   } catch (error) {
     console.error(`[MongoDB Error]: ${error.message}`);
     console.log('Server will continue to run without DB, but some features may fail.');

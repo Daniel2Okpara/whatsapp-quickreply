@@ -3,103 +3,60 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
   email: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-    lowercase: true,
-    index: true
+    type: String, required: true, unique: true, trim: true, lowercase: true, index: true
   },
-  password: {
-    type: String,
-    required: true
-  },
-  verified: {
-    type: Boolean,
-    default: false
-  },
-  verificationToken: {
-    type: String,
-    default: null
-  },
-  verificationExpires: {
-    type: Date,
-    default: null
-  },
-  isPro: {
-    type: Boolean,
-    default: false
-  },
-  isAdmin: {
-    type: Boolean,
-    default: false
-  },
-  plan: {
-    type: String,
-    enum: ['free', 'pro', 'trial'],
-    default: 'free'
-  },
-  trialUsed: {
-    type: Boolean,
-    default: false
-  },
-  paddleCustomerId: {
-    type: String,
-    default: null
-  },
-  paddleSubscriptionId: {
-    type: String,
-    default: null
-  },
-  subscriptionId: { // Keeping legacy for backward compatibility
-    type: String,
-    default: null
-  },
+  password: { type: String, required: true },
+  verified: { type: Boolean, default: false },
+  verificationToken: { type: String, default: null },
+  verificationExpires: { type: Date, default: null },
+  pendingEmail: { type: String, default: null },
+  pendingEmailToken: { type: String, default: null },
+  pendingEmailExpires: { type: Date, default: null },
+  isPro: { type: Boolean, default: false },
+  isAdmin: { type: Boolean, default: false },
+  // RBAC
+  role: { type: String, enum: ['user', 'admin', 'super_admin'], default: 'user' },
+  adminStatus: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' },
+  adminRequestedAt: { type: Date, default: null },
+  plan: { type: String, enum: ['free', 'pro', 'trial'], default: 'free' },
+  trialUsed: { type: Boolean, default: false },
+  paddleCustomerId: { type: String, default: null },
+  paddleSubscriptionId: { type: String, default: null },
+  subscriptionId: { type: String, default: null },
   subscriptionStatus: {
-    type: String,
-    enum: ['active', 'cancelled', 'inactive', 'past_due', 'paused'],
-    default: 'inactive'
+    type: String, enum: ['active', 'cancelled', 'inactive', 'past_due', 'paused'], default: 'inactive'
   },
-  trialEndsAt: {
-    type: Date,
-    default: null
+  trialEndsAt: { type: Date, default: null },
+  creditsUsed: { type: Number, default: 0 },
+  dailyUsage: { type: Number, default: 0 },
+  lastUsageReset: { type: Date, default: Date.now },
+  // Feature Flags
+  features: {
+    styleLearning: { type: Boolean, default: true },
+    autoFollowUp: { type: Boolean, default: true },
+    aiReply: { type: Boolean, default: true },
+    improveMessage: { type: Boolean, default: true }
   },
-  creditsUsed: {
-    type: Number,
-    default: 0
-  },
-  dailyUsage: {
-    type: Number,
-    default: 0
-  },
-  lastUsageReset: {
-    type: Date,
-    default: Date.now
-  },
-  templates: [
-    {
-      _id: { type: String },
-      text: { type: String, required: true },
-      category: { type: String, default: 'General' },
-      createdAt: { type: Date, default: Date.now }
-    }
-  ],
-  lastLogin: {
-    type: Date,
-    default: Date.now
-  },
-  emailHistory: [
-    {
-      oldEmail: String,
-      newEmail: String,
-      changedAt: { type: Date, default: Date.now }
-    }
-  ]
-}, {
-  timestamps: true
-});
+  templates: [{
+    _id: { type: String },
+    text: { type: String, required: true },
+    category: { type: String, default: 'General' },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  lastLogin: { type: Date, default: Date.now },
+  emailHistory: [{
+    oldEmail: String,
+    newEmail: String,
+    changedAt: { type: Date, default: Date.now }
+  }],
+  styleLearningData: [{
+    context: String,
+    exampleMessage: String,
+    tone: String,
+    recordedAt: { type: Date, default: Date.now }
+  }]
+}, { timestamps: true });
 
-// Hash password before saving
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
@@ -107,7 +64,6 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
-// Compare hashed password for login
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
