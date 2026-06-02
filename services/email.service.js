@@ -17,7 +17,7 @@ const sendVerificationEmail = async (email, token) => {
     }
 
     await resend.emails.send({
-      from: 'WA QuickReply <support@wa-quick-reply.com>', 
+      from: 'WA QuickReply <onboarding@auth.wa-quick-reply.com>', 
       to: email,
       subject: 'Verify your email address for WA QuickReply',
       text: `Hi there,\n\nPlease verify your email address to unlock your account and start saving hours of typing on WhatsApp.\n\nClick the link below to verify:\n${verificationUrl}\n\nIf the link doesn't work, copy and paste it into your browser.\n\nThanks,\nThe WA QuickReply Team`,
