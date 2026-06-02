@@ -24,8 +24,9 @@ const PORT = process.env.PORT || 3000;
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { error: 'Too many auth requests, please try again later.' }
+  max: 20,
+  message: { error: 'Too many auth requests, please try again later.' },
+  skip: (req) => ['/verify-email', '/confirm-email-change'].includes(req.path)
 });
 
 const aiLimiter = rateLimit({

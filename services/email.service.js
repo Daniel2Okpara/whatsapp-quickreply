@@ -8,7 +8,7 @@ if (!resend) {
 }
 
 const sendVerificationEmail = async (email, token) => {
-  const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+  const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
   
   try {
     if (!resend) {
@@ -17,21 +17,30 @@ const sendVerificationEmail = async (email, token) => {
     }
 
     await resend.emails.send({
-      from: 'WA QuickReply <onboarding@auth.wa-quick-reply.com>', 
+      from: 'WA QuickReply <verify@auth.wa-quick-reply.com>', 
       to: email,
+      reply_to: 'okparadaniel79@gmail.com',
       subject: 'Verify your email address for WA QuickReply',
       text: `Hi there,\n\nPlease verify your email address to unlock your account and start saving hours of typing on WhatsApp.\n\nClick the link below to verify:\n${verificationUrl}\n\nIf the link doesn't work, copy and paste it into your browser.\n\nThanks,\nThe WA QuickReply Team`,
       html: `
-        <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; color: #333;">
-          <p>Hi there,</p>
-          <p>Please verify your email address to unlock your account and start saving hours of typing on WhatsApp.</p>
-          <p style="margin: 30px 0;">
-            <a href="${verificationUrl}" style="background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Verify Email Address</a>
-          </p>
-          <p style="font-size: 13px; color: #666;">If the button doesn't work, copy and paste this link into your browser:</p>
-          <p style="font-size: 13px; word-break: break-all;"><a href="${verificationUrl}">${verificationUrl}</a></p>
-          <p style="margin-top: 40px; font-size: 13px; color: #888;">Thanks,<br>The WA QuickReply Team</p>
-        </div>
+        <!DOCTYPE html>
+        <html>
+        <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: Arial, sans-serif; color: #111;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 32px; background: #ffffff; border-radius: 18px; box-shadow: 0 24px 80px rgba(0,0,0,0.08);">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <div style="width: 72px; height: 72px; border-radius: 24px; background: #25d366; display: inline-flex; align-items: center; justify-content: center; color: white; font-size: 32px;">⚡</div>
+            </div>
+            <h1 style="font-size: 24px; margin: 0 0 16px; text-align: center;">Verify your email</h1>
+            <p style="font-size: 16px; line-height: 1.6; color: #4b5563; text-align: center; margin: 0 0 28px;">Click the button below to verify your address and activate WA QuickReply.</p>
+            <div style="text-align: center; margin-bottom: 32px;">
+              <a href="${verificationUrl}" style="display: inline-block; background: #25d366; color: white; padding: 14px 28px; border-radius: 999px; text-decoration: none; font-weight: 700;">Verify Email Address</a>
+            </div>
+            <p style="font-size: 14px; color: #6b7280; line-height: 1.7;">If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="font-size: 14px; color: #2563eb; word-break: break-all;"><a href="${verificationUrl}" style="color: #2563eb; text-decoration: none;">${verificationUrl}</a></p>
+            <p style="font-size: 14px; color: #6b7280; margin-top: 32px;">Thanks,<br><strong>WA QuickReply Team</strong></p>
+          </div>
+        </body>
+        </html>
       `
     });
     console.log(`[Email Service] Verification email sent to ${email}`);
@@ -41,7 +50,7 @@ const sendVerificationEmail = async (email, token) => {
 };
 
 const sendEmailChangeVerification = async (email, token) => {
-  const verificationUrl = `${process.env.FRONTEND_URL}/confirm-email-change?token=${token}&email=${encodeURIComponent(email)}`;
+  const verificationUrl = `${process.env.FRONTEND_URL}/confirm-email-change?token=${token}`;
   
   try {
     if (!resend) {
@@ -49,8 +58,9 @@ const sendEmailChangeVerification = async (email, token) => {
       return;
     }
     await resend.emails.send({
-      from: 'WA QuickReply <onboarding@auth.wa-quick-reply.com>',
+      from: 'WA QuickReply <verify@auth.wa-quick-reply.com>',
       to: email,
+      reply_to: 'okparadaniel79@gmail.com',
       subject: 'Confirm your new email address',
       html: `
         <!DOCTYPE html>
