@@ -15,7 +15,6 @@ document.getElementById('save-email').addEventListener('click', async () => {
     let headers = { 'Content-Type': 'application/json' };
     
     if (data.jwtToken) {
-      // User is already logged in, so this is an email change request
       endpoint = `${SERVER}/auth/request-email-change`;
       body = { newEmail: email };
       headers['Authorization'] = `Bearer ${data.jwtToken}`;
@@ -30,10 +29,9 @@ document.getElementById('save-email').addEventListener('click', async () => {
     const respData = await resp.json().catch(() => ({}));
 
     if (resp.ok) {
-      status.textContent = 'Verification email sent to ' + email + '. Check your inbox. Waiting for verification...';
-      
-      // Polling logic
       if (!data.jwtToken) {
+        status.textContent = 'Verification email sent to ' + email + '. Check your inbox. Waiting for verification...';
+        
         let attempts = 0;
         const pollInterval = setInterval(async () => {
           attempts++;
@@ -50,7 +48,6 @@ document.getElementById('save-email').addEventListener('click', async () => {
                 clearInterval(pollInterval);
                 status.innerHTML = '<span style="color:#25D366;font-weight:bold;">Email verified! Unlocking extension...</span>';
                 
-                // Store auth and unlock
                 chrome.storage.local.set({ 
                   email: statData.email, 
                   userId: statData._id,
@@ -70,7 +67,6 @@ document.getElementById('save-email').addEventListener('click', async () => {
           }
         }, 5000);
       } else {
-         // Direct email update success
          status.textContent = 'Email updated to ' + email + ' successfully!';
          chrome.storage.local.set({ email: email });
          if (respData.accessToken) {
