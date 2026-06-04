@@ -174,26 +174,27 @@ exports.requestEmailChange = async (req, res) => {
   try {
     if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
     
-    let { newEmail } = req.body;
-    if (!newEmail) return res.status(400).json({ error: 'New email is required' });
+    let { newEmail, email } = req.body;
+    const incomingEmail = String(newEmail || email || '').trim();
+    if (!incomingEmail) return res.status(400).json({ error: 'New email is required' });
     
-    newEmail = newEmail.toLowerCase().trim();
-    if (!validator.isEmail(newEmail)) return res.status(400).json({ error: 'Invalid email format' });
-    if (isDisposableEmail(newEmail)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
+    const normalizedEmail = incomingEmail.toLowerCase();
+    if (!validator.isEmail(normalizedEmail)) return res.status(400).json({ error: 'Invalid email format' });
+    if (isDisposableEmail(normalizedEmail)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
 
-    const emailTaken = await User.findOne({ email: newEmail });
+    const emailTaken = await User.findOne({ email: normalizedEmail });
     if (emailTaken && String(emailTaken._id) !== String(req.user.id)) return res.status(400).json({ error: 'Email already in use' });
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const oldEmail = user.email;
-    user.email = newEmail;
+    user.email = normalizedEmail;
     user.verified = true;
     user.pendingEmail = null;
     user.pendingEmailToken = null;
     user.pendingEmailExpires = null;
-    user.emailHistory.push({ oldEmail, newEmail, changedAt: new Date() });
+    user.emailHistory.push({ oldEmail, newEmail: normalizedEmail, changedAt: new Date() });
     await user.save();
 
     console.log(`[Auth] Email changed immediately for authenticated user: ${oldEmail} -> ${newEmail} (User: ${user._id})`);
