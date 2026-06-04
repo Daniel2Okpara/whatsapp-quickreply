@@ -84,6 +84,15 @@ app.post('/webhook/paddle', express.raw({ type: '*/*' }), (req, res, next) => {
 app.use(express.json());
 
 // Mount auth and API routes after JSON body parser
+// Request logger for auth routes (temporary): logs method, path, origin, and presence of Authorization header
+app.use('/auth', (req, res, next) => {
+  try {
+    console.log(`[AuthRoute] ${req.method} ${req.originalUrl} - Origin: ${req.headers.origin || 'none'} - Authorization: ${req.headers.authorization ? 'yes' : 'no'}`);
+  } catch (e) {
+    // ignore logging errors
+  }
+  return next();
+});
 const signupLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
   max: 3,
