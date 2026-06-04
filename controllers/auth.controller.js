@@ -173,11 +173,13 @@ exports.login = async (req, res) => {
 exports.requestEmailChange = async (req, res) => {
   try {
     if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
-    
-    let { newEmail, email } = req.body;
-    const incomingEmail = String(newEmail || email || '').trim();
+
+    const payloadEmail = req.body && (req.body.newEmail || req.body.email);
+    const queryEmail = req.query && (req.query.newEmail || req.query.email);
+    const incomingEmail = String(payloadEmail || queryEmail || '').trim();
+
     if (!incomingEmail) return res.status(400).json({ error: 'New email is required' });
-    
+
     const normalizedEmail = incomingEmail.toLowerCase();
     if (!validator.isEmail(normalizedEmail)) return res.status(400).json({ error: 'Invalid email format' });
     if (isDisposableEmail(normalizedEmail)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });

@@ -28,13 +28,16 @@ router.get('/verify-email', verifyEmail);
 router.get('/profile', protect, getProfile);
 router.post('/refresh', refresh);
 
-// Email Change flow - Support both POST and PUT
+// Email Change flow - Support both POST/PUT and legacy GET with query params
 router.post('/request-email-change', protect, requestEmailChange);
 router.put('/request-email-change', protect, requestEmailChange);
+router.get('/request-email-change', protect, requestEmailChange);
 router.post('/change-email', protect, requestEmailChange);
 router.put('/change-email', protect, requestEmailChange);
+router.get('/change-email', protect, requestEmailChange);
 router.post('/email-change', protect, requestEmailChange);
 router.put('/email-change', protect, requestEmailChange);
+router.get('/email-change', protect, requestEmailChange);
 router.get('/confirm-email-change', confirmEmailChange);
 router.delete('/wipe-my-account', protect, wipeMyAccount);
 
