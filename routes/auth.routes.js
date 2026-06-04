@@ -31,6 +31,10 @@ router.post('/refresh', refresh);
 // Email Change flow - Support both POST and PUT
 router.post('/request-email-change', protect, requestEmailChange);
 router.put('/request-email-change', protect, requestEmailChange);
+router.post('/change-email', protect, requestEmailChange);
+router.put('/change-email', protect, requestEmailChange);
+router.post('/email-change', protect, requestEmailChange);
+router.put('/email-change', protect, requestEmailChange);
 router.get('/confirm-email-change', confirmEmailChange);
 router.delete('/wipe-my-account', protect, wipeMyAccount);
 
