@@ -14,10 +14,11 @@ document.getElementById('save-email').addEventListener('click', async () => {
     let body = { email };
     let headers = { 'Content-Type': 'application/json' };
     
-    if (data.jwtToken) {
+    const token = (data && data.jwtToken) ? String(data.jwtToken).trim() : '';
+    if (token) {
       endpoint = `${SERVER}/auth/request-email-change`;
       body = { newEmail: email };
-      headers['Authorization'] = `Bearer ${data.jwtToken}`;
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     const resp = await fetch(endpoint, {
