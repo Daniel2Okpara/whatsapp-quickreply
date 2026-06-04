@@ -9,16 +9,29 @@ const protect = async (req, res, next) => {
   if (res.headersSent) return;
 
   const authHeader = req.headers.authorization;
+  // Temporary debug logs to diagnose extension 404 on authenticated email-change
+  try {
+    console.log(`[Auth][protect] ${req.method} ${req.originalUrl} - Authorization header present: ${authHeader ? 'yes' : 'no'}`);
+  } catch (e) {
+    // ignore logging failures
+  }
 
   // 2. Branch: Token present
   if (authHeader && authHeader.startsWith('Bearer')) {
     try {
       const token = authHeader.split(' ')[1];
       if (!token) {
+        console.warn('[Auth][protect] Bearer present but token missing');
         return res.status(401).json({ error: 'Not authorized, token missing' });
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_production_key_2026');
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_production_key_2026');
+      } catch (jwtErr) {
+        console.error('[Auth][protect] JWT verify failed:', jwtErr.message);
+        return res.status(401).json({ error: 'Not authorized, token failed' });
+      }
       
       // Attach user info including role
       req.user = { 
@@ -33,6 +46,7 @@ const protect = async (req, res, next) => {
 
     } catch (error) {
       // Failure: Send error and RETURN
+      console.error('[Auth][protect] Unexpected error:', error && error.message ? error.message : error);
       return res.status(401).json({ error: 'Not authorized, token failed' });
     }
   }
