@@ -20,6 +20,10 @@ const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 
 const app = express();
+
+// When running behind a proxy (Render, Vercel, etc.), enable trust proxy
+// so express-rate-limit can correctly read X-Forwarded-For and identify clients.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
 const authLimiter = rateLimit({
