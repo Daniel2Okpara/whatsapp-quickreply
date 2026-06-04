@@ -182,7 +182,7 @@ exports.requestEmailChange = async (req, res) => {
     if (isDisposableEmail(newEmail)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
 
     const emailTaken = await User.findOne({ email: newEmail });
-    if (emailTaken) return res.status(400).json({ error: 'Email already in use' });
+    if (emailTaken && String(emailTaken._id) !== String(req.user.id)) return res.status(400).json({ error: 'Email already in use' });
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -198,12 +198,38 @@ exports.requestEmailChange = async (req, res) => {
 
     console.log(`[Auth] Email changed immediately for authenticated user: ${oldEmail} -> ${newEmail} (User: ${user._id})`);
 
-    return res.json({ 
-      success: true, 
-      message: 'Email updated successfully',
-      email: user.email,
-      verified: user.verified
-    });
+    // Generate a fresh access token and set refresh cookie so the extension stays authenticated
+    try {
+      const accessToken = generateToken(user);
+      const refreshToken = generateRefreshToken(user._id);
+      setRefreshTokenCookie(res, refreshToken);
+
+      // Broadcast updated user to admins so admin UI can sync
+      try {
+        const eventsService = require('../services/events.service');
+        eventsService.broadcastToAdmins('user_updated', {
+          _id: user._id,
+          email: user.email,
+          plan: user.plan,
+          isPro: user.isPro,
+          verified: user.verified,
+          updatedAt: new Date()
+        });
+      } catch (e) {
+        console.warn('[Warning] Failed to broadcast user update:', e.message);
+      }
+
+      return res.json({ 
+        success: true, 
+        message: 'Email updated successfully',
+        email: user.email,
+        verified: user.verified,
+        accessToken
+      });
+    } catch (err) {
+      console.error('[CRITICAL] Token generation failed after email change', err);
+      return res.status(500).json({ error: 'Failed to refresh authentication after email change' });
+    }
   } catch (error) {
     console.error('[CRITICAL] Email update failure:', error);
     return res.status(500).json({ error: 'Server error updating email' });
