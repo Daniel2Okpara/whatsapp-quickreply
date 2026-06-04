@@ -17,11 +17,11 @@ const protect = async (req, res, next) => {
   }
 
   // 2. Branch: Token present
-  if (authHeader && authHeader.startsWith('Bearer')) {
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer')) {
     try {
-      const token = authHeader.split(' ')[1];
+      const token = String(authHeader.split(' ')[1] || '').trim();
       if (!token) {
-        console.warn('[Auth][protect] Bearer present but token missing');
+        console.warn('[Auth][protect] Bearer present but token missing; rejecting as unauthorized');
         return res.status(401).json({ error: 'Not authorized, token missing' });
       }
 
