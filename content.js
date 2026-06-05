@@ -1008,7 +1008,7 @@
           settingsPanel.style.display = 'none';
           showToast('Email updated ✅');
           const upgradeLink = shadow.querySelector('#waqr-upgrade-link');
-          if (upgradeLink) upgradeLink.href = 'https://www.wa-quick-reply.com/#pricing?email=' + encodeURIComponent(nw);
+          if (upgradeLink) upgradeLink.href = 'https://www.wa-quick-reply.com/#pricing';
           const emailDisplay = shadow.getElementById('waqr-email-display');
           if (emailDisplay) emailDisplay.textContent = nw;
         });
@@ -1025,8 +1025,7 @@
       const email = (r && r.email) ? r.email : null;
       const upgradeLink = shadow.querySelector('#waqr-upgrade-link');
       if (upgradeLink) {
-        const base = 'https://www.wa-quick-reply.com/#pricing';
-        upgradeLink.href = email ? (base + '?email=' + encodeURIComponent(email)) : base;
+        upgradeLink.href = 'https://www.wa-quick-reply.com/#pricing';
       }
     });
   })();
