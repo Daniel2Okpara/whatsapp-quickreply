@@ -29,12 +29,12 @@
 
   async function getStoredAuthToken() {
     console.log('[AUDIT][EXTENSION][getStoredAuthToken] Entry');
-    const keys = ['jwtToken', 'accessToken', 'refreshToken', 'token'];
+    const keys = ['jwtToken', 'accessToken', 'refreshToken', 'token', 'email'];
     let stored = {};
     try {
       stored = await new Promise(resolve => storageGet(keys, resolve));
       console.log('[AUDIT][EXTENSION][getStoredAuthToken] Runtime storage keys found:', Object.keys(stored).filter(k => !!stored[k]));
-      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Runtime storage - jwtToken:', !!stored.jwtToken, 'accessToken:', !!stored.accessToken, 'refreshToken:', !!stored.refreshToken, 'token:', !!stored.token);
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Runtime storage - jwtToken:', !!stored.jwtToken, 'accessToken:', !!stored.accessToken, 'refreshToken:', !!stored.refreshToken, 'token:', !!stored.token, 'email:', !!stored.email);
     } catch (e) {
       console.log('[AUDIT][EXTENSION][getStoredAuthToken] Runtime storage error:', e.message);
       stored = {};
@@ -49,7 +49,7 @@
     try {
       stored = await new Promise(resolve => chrome.storage.local.get(keys, resolve));
       console.log('[AUDIT][EXTENSION][getStoredAuthToken] Local storage keys found:', Object.keys(stored).filter(k => !!stored[k]));
-      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Local storage - jwtToken:', !!stored.jwtToken, 'accessToken:', !!stored.accessToken, 'refreshToken:', !!stored.refreshToken, 'token:', !!stored.token);
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Local storage - jwtToken:', !!stored.jwtToken, 'accessToken:', !!stored.accessToken, 'refreshToken:', !!stored.refreshToken, 'token:', !!stored.token, 'email:', !!stored.email);
     } catch (e) {
       console.log('[AUDIT][EXTENSION][getStoredAuthToken] Local storage error:', e.message);
       stored = {};
@@ -59,6 +59,35 @@
       console.log('[AUDIT][EXTENSION][getStoredAuthToken] Token found in local storage - returning');
       try { console.log('[Content] getStoredAuthToken found local storage token keys=', Object.keys(stored).filter(k => !!stored[k])); } catch (e) {}
       return token;
+    }
+
+    // If no token but we have an email, try to fetch tokens via verification-status
+    if (stored.email && !token) {
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] No token but email found - attempting to fetch tokens via verification-status');
+      try {
+        const statusResp = await fetch(`${BACKEND_URL}/auth/verification-status?email=${encodeURIComponent(stored.email)}`, { credentials: 'include' });
+        console.log('[AUDIT][EXTENSION][getStoredAuthToken] verification-status response:', statusResp.status);
+        if (statusResp.ok) {
+          const statusData = await statusResp.json();
+          console.log('[AUDIT][EXTENSION][getStoredAuthToken] verification-status data:', statusData, 'verified:', statusData.verified);
+          if (statusData.verified && statusData.accessToken) {
+            console.log('[AUDIT][EXTENSION][getStoredAuthToken] User is verified - storing tokens');
+            chrome.storage.local.set({ 
+              jwtToken: statusData.accessToken, 
+              refreshToken: statusData.refreshToken,
+              userId: statusData._id,
+              plan: statusData.plan || 'free',
+              isPro: !!statusData.isPro
+            }, () => {
+              console.log('[AUDIT][EXTENSION][getStoredAuthToken] Tokens stored automatically');
+            });
+            console.log('[AUDIT][EXTENSION][getStoredAuthToken] Returning fetched token');
+            return statusData.accessToken;
+          }
+        }
+      } catch (err) {
+        console.log('[AUDIT][EXTENSION][getStoredAuthToken] verification-status fetch error:', err.message);
+      }
     }
 
     console.log('[AUDIT][EXTENSION][getStoredAuthToken] No token found, attempting refresh');
