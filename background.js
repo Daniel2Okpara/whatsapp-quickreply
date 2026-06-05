@@ -13,6 +13,14 @@ function storageSet(obj) {
   return new Promise(resolve => chrome.storage.local.set(obj, resolve));
 }
 
+function broadcastRuntimeMessage(message) {
+  chrome.runtime.sendMessage(message, () => {
+    if (chrome.runtime.lastError) {
+      try { console.warn('[Background] broadcastRuntimeMessage no receiver:', chrome.runtime.lastError.message); } catch (e) {}
+    }
+  });
+}
+
 // Fetch with timeout helper for consistent network timeouts
 async function fetchWithTimeout(url, options = {}, timeout = 20000) {
   const controller = new AbortController();
@@ -120,12 +128,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'GET_STORAGE') {
-    storageGet(request.keys).then(data => safeSendResponse(sendResponse, data));
+    storageGet(request.keys).then(data => {
+      try { console.log('[Background] GET_STORAGE keys=', request.keys, '->', Object.keys(data || {})); } catch(e){}
+      safeSendResponse(sendResponse, data);
+    });
     return true;
   }
 
   if (request.type === 'SET_STORAGE') {
-    storageSet(request.obj).then(() => safeSendResponse(sendResponse, { success: true }));
+    storageSet(request.obj).then(() => {
+      try { console.log('[Background] SET_STORAGE keys=', Object.keys(request.obj)); } catch(e){}
+      broadcastRuntimeMessage({ type: 'STORAGE_UPDATED', keys: Object.keys(request.obj) });
+      safeSendResponse(sendResponse, { success: true });
+    });
+    return true;
+  }
+
+  if (request.type === 'STORAGE_UPDATED') {
+    try { console.log('[Background] STORAGE_UPDATED from sender keys=', request.keys); } catch(e){}
+    // Propagate a lightweight notification to other contexts if needed
+    broadcastRuntimeMessage({ type: 'STORAGE_UPDATED_PROP', keys: request.keys });
     return true;
   }
 

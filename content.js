@@ -7,6 +7,7 @@
   'use strict';
 
   let window_WAQR_LOADED = false;
+  const BACKEND_URL = 'https://wa-quickreply-server.onrender.com';
 
   // ============================================================================
   // 0. STABILITY & CONTEXT CHECK
@@ -26,9 +27,60 @@
     chrome.runtime.sendMessage({ type: 'SET_STORAGE', obj }, callback);
   }
 
-  // ============================================================================
-  // 1. SHADOW DOM SETUP
-  // ============================================================================
+  async function getStoredAuthToken() {
+    const keys = ['jwtToken', 'accessToken', 'refreshToken', 'token'];
+    let stored = {};
+    try {
+      stored = await new Promise(resolve => storageGet(keys, resolve));
+    } catch (e) {
+      stored = {};
+    }
+    let token = (stored && (stored.jwtToken || stored.accessToken || stored.token)) || '';
+    if (token) {
+      try { console.log('[Content] getStoredAuthToken found runtime storage token keys=', Object.keys(stored).filter(k => !!stored[k])); } catch (e) {}
+      return token;
+    }
+
+    try {
+      stored = await new Promise(resolve => chrome.storage.local.get(keys, resolve));
+    } catch (e) {
+      stored = {};
+    }
+    token = (stored && (stored.jwtToken || stored.accessToken || stored.token)) || '';
+    if (token) {
+      try { console.log('[Content] getStoredAuthToken found local storage token keys=', Object.keys(stored).filter(k => !!stored[k])); } catch (e) {}
+      return token;
+    }
+
+    const refreshBody = stored.refreshToken ? JSON.stringify({ refreshToken: stored.refreshToken }) : undefined;
+    try {
+      const refreshRes = await fetch(`${BACKEND_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: refreshBody ? { 'Content-Type': 'application/json' } : undefined,
+        body: refreshBody
+      });
+      if (!refreshRes.ok) {
+        try { console.warn('[Content] /auth/refresh returned non-ok', refreshRes.status, refreshRes.statusText); } catch (e) {}
+      } else {
+        const refreshData = await refreshRes.json();
+        const refreshed = refreshData.accessToken || refreshData.jwtToken;
+        try { console.log('[Content] /auth/refresh response keys=', Object.keys(refreshData || {}), 'hasToken=', !!refreshed); } catch(e) {}
+        if (refreshed) {
+          chrome.storage.local.set({ jwtToken: refreshed }, () => {
+            try { console.log('[Content] Saved refreshed auth token from /auth/refresh'); } catch(e) {}
+          });
+          return refreshed;
+        }
+        try { console.warn('[Content] /auth/refresh did not return an accessToken/jwtToken', refreshData); } catch(e) {}
+      }
+    } catch (err) {
+      try { console.error('[Content] refresh token fetch failed', err); } catch(e) {}
+    }
+
+    return '';
+  }
+
 
   const hostEl = document.createElement('div');
   hostEl.id = 'waqr-host';
@@ -39,7 +91,6 @@
 
   // SSE: connect to backend for real-time subscription updates
   (function setupSSE() {
-    const BACKEND_URL = 'https://wa-quickreply-server.onrender.com';
     storageGet(['email'], (r) => {
       const email = r && r.email;
       if (!email) return;
@@ -876,14 +927,25 @@
         changeErr.textContent = 'Please enter valid emails'; changeErr.style.display = 'block'; return;
       }
       if (cur === nw) { changeErr.textContent = 'New email must be different'; changeErr.style.display = 'block'; return; }
+      const token = await getStoredAuthToken();
+      try { console.log('[Content] email-change token found=', !!token); } catch(e) {}
+      if (!token) {
+        changeErr.textContent = 'Please reconnect the extension before changing your email.';
+        changeErr.style.display = 'block';
+        return;
+      }
       try {
-        const resp = await fetch('https://wa-quickreply-server.onrender.com/user/update-email', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ currentEmail: cur, newEmail: nw })
+        const resp = await fetch(`${BACKEND_URL}/auth/request-email-change`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ newEmail: nw })
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) { changeErr.textContent = data.error || `Failed (${resp.status})`; changeErr.style.display = 'block'; return; }
-        storageSet({ email: nw }, () => {
+        storageSet({ email: nw, jwtToken: data.accessToken || token }, () => {
           changeBox.style.display = 'none';
           settingsPanel.style.display = 'none';
           showToast('Email updated ✅');
@@ -1353,6 +1415,10 @@
       chrome.runtime.sendMessage({ 
         type: 'SYNC_TEMPLATES', 
         templates: templates.map(t => ({ id: t.id, text: t.message, category: t.category }))
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn('[Content] SYNC_TEMPLATES send failed:', chrome.runtime.lastError.message);
+        }
       });
     });
   }
@@ -1795,7 +1861,11 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const feedback = btn.getAttribute('data-fb');
-          chrome.runtime.sendMessage({ type: 'SUBMIT_FEEDBACK', suggestion, feedback });
+          chrome.runtime.sendMessage({ type: 'SUBMIT_FEEDBACK', suggestion, feedback }, () => {
+          if (chrome.runtime.lastError) {
+            console.warn('[Content] SUBMIT_FEEDBACK send failed:', chrome.runtime.lastError.message);
+          }
+        });
           
           btn.parentElement.innerHTML = '<span style="font-size:10px; color:#10b981;">Thanks!</span>';
         });
@@ -2189,6 +2259,13 @@
         syncPlanState();
       }
       sendResponse({ success: true });
+      return false;
+    }
+
+    if (request.type === 'STORAGE_UPDATED_PROP') {
+      if (request.keys?.includes('jwtToken') || request.keys?.includes('plan') || request.keys?.includes('usage')) {
+        syncPlanState();
+      }
       return false;
     }
   });

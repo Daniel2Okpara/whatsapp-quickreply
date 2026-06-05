@@ -24,7 +24,8 @@ document.getElementById('save-email').addEventListener('click', async () => {
     const resp = await fetch(endpoint, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      credentials: 'include'
     });
     
     const respData = await resp.json().catch(() => ({}));
@@ -42,7 +43,7 @@ document.getElementById('save-email').addEventListener('click', async () => {
             return;
           }
           try {
-            const statResp = await fetch(`${SERVER}/auth/verification-status?email=${encodeURIComponent(email)}`);
+            const statResp = await fetch(`${SERVER}/auth/verification-status?email=${encodeURIComponent(email)}`, { credentials: 'include' });
             if (statResp.ok) {
               const statData = await statResp.json();
               if (statData.verified) {
@@ -53,9 +54,16 @@ document.getElementById('save-email').addEventListener('click', async () => {
                   email: statData.email, 
                   userId: statData._id,
                   jwtToken: statData.accessToken,
+                  refreshToken: statData.refreshToken,
                   plan: statData.plan || 'free',
                   isPro: !!statData.isPro
                 }, () => {
+                  try { console.log('[Options] Stored jwtToken and refreshToken (verification):', !!statData.accessToken, !!statData.refreshToken); } catch(e){}
+                  chrome.runtime.sendMessage({ type: 'STORAGE_UPDATED', keys: ['jwtToken', 'refreshToken'] }, () => {
+                    if (chrome.runtime.lastError) {
+                      console.warn('[Options] STORAGE_UPDATED send failed:', chrome.runtime.lastError.message);
+                    }
+                  });
                   setTimeout(() => {
                     status.textContent = 'Connected as ' + statData.email + '. Refresh WhatsApp to apply.';
                     document.getElementById('token').value = '';
@@ -71,7 +79,14 @@ document.getElementById('save-email').addEventListener('click', async () => {
          status.textContent = 'Email updated to ' + email + ' successfully!';
          chrome.storage.local.set({ email: email });
          if (respData.accessToken) {
-            chrome.storage.local.set({ jwtToken: respData.accessToken });
+          chrome.storage.local.set({ jwtToken: respData.accessToken }, () => {
+            try { console.log('[Options] Stored jwtToken (resend):', !!respData.accessToken); } catch(e){}
+            chrome.runtime.sendMessage({ type: 'STORAGE_UPDATED', keys: ['jwtToken'] }, () => {
+              if (chrome.runtime.lastError) {
+                console.warn('[Options] STORAGE_UPDATED send failed:', chrome.runtime.lastError.message);
+              }
+            });
+          });
          }
       }
     } else {
@@ -90,7 +105,7 @@ document.getElementById('connect').addEventListener('click', async () => {
   status.textContent = 'Connecting...';
   
   try {
-    const resp = await fetch(`${SERVER}/auth/handshake/${encodeURIComponent(token)}`);
+    const resp = await fetch(`${SERVER}/auth/handshake/${encodeURIComponent(token)}`, { credentials: 'include' });
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}));
       throw new Error(errData.error || 'Invalid token');
@@ -105,9 +120,16 @@ document.getElementById('connect').addEventListener('click', async () => {
         email, 
         userId: _id,
         jwtToken: accessToken,
+        refreshToken: refreshToken,
         plan: plan || 'free',
         isPro: !!isPro
       }, () => {
+        try { console.log('[Options] Stored jwtToken and refreshToken (handshake):', !!accessToken, !!refreshToken); } catch(e){}
+        chrome.runtime.sendMessage({ type: 'STORAGE_UPDATED', keys: ['jwtToken', 'refreshToken'] }, () => {
+          if (chrome.runtime.lastError) {
+            console.warn('[Options] STORAGE_UPDATED send failed:', chrome.runtime.lastError.message);
+          }
+        });
         status.textContent = 'Connected as ' + email + '. Refresh WhatsApp to apply.';
       });
     }
