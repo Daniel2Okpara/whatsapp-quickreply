@@ -155,3 +155,47 @@ document.getElementById('connect').addEventListener('click', async () => {
     status.textContent = 'Connect failed: ' + (err.message || 'error');
   }
 });
+
+document.getElementById('delete-account').addEventListener('click', async () => {
+  if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+    return;
+  }
+  
+  const status = document.getElementById('status');
+  status.textContent = 'Deleting account...';
+  
+  try {
+    const data = await new Promise(resolve => chrome.storage.local.get(['jwtToken'], resolve));
+    const token = data.jwtToken;
+    
+    if (!token) {
+      status.textContent = 'You must be logged in to delete your account.';
+      return;
+    }
+    
+    const resp = await fetch(`${SERVER}/auth/delete-account`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      credentials: 'include'
+    });
+    
+    const respData = await resp.json().catch(() => ({}));
+    
+    if (resp.ok) {
+      // Clear all storage
+      chrome.storage.local.clear(() => {
+        status.textContent = 'Account deleted successfully.';
+        setTimeout(() => {
+          status.textContent = 'Extension disconnected. You may now uninstall it.';
+        }, 2000);
+      });
+    } else {
+      status.textContent = 'Error: ' + (respData.error || 'Failed to delete account');
+    }
+  } catch (err) {
+    status.textContent = 'Network error: ' + err.message;
+  }
+});
