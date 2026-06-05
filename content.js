@@ -816,7 +816,8 @@
     <a href="#" id="waqr-change-email-toggle" style="display:block;font-size:12px;color:#27a55e;text-decoration:none;font-weight:600;margin-bottom:6px;">Change email address →</a>
     <div id="waqr-change-email-box" style="display:none;">
       <input type="email" id="waqr-change-current" placeholder="Current email" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;box-sizing:border-box;font-size:13px;">
-      <input type="email" id="waqr-change-new" placeholder="New email" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:8px;box-sizing:border-box;font-size:13px;">
+      <input type="email" id="waqr-change-new" placeholder="New email" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;box-sizing:border-box;font-size:13px;">
+      <input type="password" id="waqr-change-password" placeholder="Password (required if not logged in)" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:8px;box-sizing:border-box;font-size:13px;">
       <button id="waqr-change-email-save" style="background:#27a55e;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;width:100%;font-size:13px;font-weight:600;">Change Email</button>
       <div id="waqr-change-email-error" style="color:#dc2626;font-size:12px;margin-top:6px;display:none;"></div>
     </div>
@@ -942,7 +943,8 @@
       console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Entry');
       const cur = (shadow.querySelector('#waqr-change-current').value || '').trim().toLowerCase();
       const nw  = (shadow.querySelector('#waqr-change-new').value  || '').trim().toLowerCase();
-      console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Current email:', cur, 'New email:', nw);
+      const pwd = (shadow.querySelector('#waqr-change-password').value || '').trim();
+      console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Current email:', cur, 'New email:', nw, 'Password provided:', !!pwd);
       changeErr.style.display = 'none';
       const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!valid.test(cur) || !valid.test(nw)) {
@@ -954,15 +956,54 @@
         changeErr.textContent = 'New email must be different'; changeErr.style.display = 'block'; return; 
       }
       console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Calling getStoredAuthToken');
-      const token = await getStoredAuthToken();
+      let token = await getStoredAuthToken();
       console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Token retrieved:', !!token, 'length:', token ? token.length : 0);
       try { console.log('[Content] email-change token found=', !!token); } catch(e) {}
+      
+      // If no token, authenticate with email + password first
       if (!token) {
-        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] No token available - showing error');
-        changeErr.textContent = 'Please reconnect the extension before changing your email.';
-        changeErr.style.display = 'block';
-        return;
+        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] No token available - attempting login');
+        if (!pwd) {
+          console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] No password provided - showing error');
+          changeErr.textContent = 'Please enter your password to change email';
+          changeErr.style.display = 'block';
+          return;
+        }
+        try {
+          console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Calling /auth/login');
+          const loginResp = await fetch(`${BACKEND_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cur, password: pwd })
+          });
+          console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Login response status:', loginResp.status);
+          const loginData = await loginResp.json().catch(() => ({}));
+          console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Login response data:', loginData);
+          if (!loginResp.ok) {
+            console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Login failed - showing error');
+            changeErr.textContent = loginData.error || 'Authentication failed. Check your email and password.';
+            changeErr.style.display = 'block';
+            return;
+          }
+          token = loginData.accessToken;
+          console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Login successful - token obtained, length:', token.length);
+          // Store the tokens for future use
+          chrome.storage.local.set({ 
+            jwtToken: loginData.accessToken, 
+            refreshToken: loginData.refreshToken,
+            email: cur,
+            userId: loginData._id
+          }, () => {
+            console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Tokens stored after login');
+          });
+        } catch (err) {
+          console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Login error:', err.message);
+          changeErr.textContent = 'Authentication failed. Please try again.';
+          changeErr.style.display = 'block';
+          return;
+        }
       }
+      
       try {
         console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Calling /auth/request-email-change');
         const resp = await fetch(`${BACKEND_URL}/auth/request-email-change`, {
@@ -990,6 +1031,7 @@
           if (emailDisplay) emailDisplay.textContent = nw;
         });
       } catch (err) {
+        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Email change error:', err.message);
         changeErr.textContent = 'Server error'; changeErr.style.display = 'block';
       }
     });

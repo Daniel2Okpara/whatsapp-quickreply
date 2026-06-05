@@ -148,7 +148,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'GET_STORAGE') {
+    console.log('[AUDIT][BACKGROUND][GET_STORAGE] Request keys:', request.keys);
     storageGet(request.keys).then(data => {
+      console.log('[AUDIT][BACKGROUND][GET_STORAGE] Response keys:', Object.keys(data || {}), 'values:', data);
       try { console.log('[Background] GET_STORAGE keys=', request.keys, '->', Object.keys(data || {})); } catch(e){}
       safeSendResponse(sendResponse, data);
     });
@@ -156,7 +158,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'SET_STORAGE') {
+    console.log('[AUDIT][BACKGROUND][SET_STORAGE] Request keys:', Object.keys(request.obj), 'values:', request.obj);
     storageSet(request.obj).then(() => {
+      console.log('[AUDIT][BACKGROUND][SET_STORAGE] Storage saved successfully');
       try { console.log('[Background] SET_STORAGE keys=', Object.keys(request.obj)); } catch(e){}
       broadcastRuntimeMessage({ type: 'STORAGE_UPDATED', keys: Object.keys(request.obj) });
       safeSendResponse(sendResponse, { success: true });
