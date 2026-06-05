@@ -14,6 +14,8 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const aiRoutes = require('./routes/ai.routes');
 const authRoutes = require('./routes/auth.routes');
+const authController = require('./controllers/auth.controller');
+const { protect, requireAdmin } = require('./middleware/auth.middleware');
 const paddleRoutes = require('./routes/paddle.routes');
 
 const rateLimit = require('express-rate-limit');
@@ -119,8 +121,30 @@ const isDisposableEmail = (email) => {
   return disposableDomains.some(d => domain.includes(d));
 };
 
+const extensionTokenSupport = (req, res, next) => {
+  if (!req.headers.authorization) {
+    const token = req.body?.token || req.query?.token || req.headers['x-access-token'];
+    if (token) req.headers.authorization = `Bearer ${token}`;
+  }
+  next();
+};
+
 app.use('/auth/register', signupLimiter);
 app.use('/auth', authLimiter, authRoutes);
+
+// Legacy extension compatibility: older builds may still call these paths.
+const legacyEmailChangePaths = [
+  '/user/update-email',
+  '/user/change-email',
+  '/user/email-change',
+  '/auth/change-email',
+  '/auth/email-change'
+];
+legacyEmailChangePaths.forEach((path) => {
+  app.post(path, extensionTokenSupport, protect, authController.requestEmailChange);
+  app.put(path, extensionTokenSupport, protect, authController.requestEmailChange);
+  app.get(path, extensionTokenSupport, protect, authController.requestEmailChange);
+});
 
 // Surgical AI Routing (No root overlap)
 app.post('/ai-reply', aiLimiter, aiRoutes);
@@ -166,7 +190,6 @@ app.get('/events', (req, res) => {
 });
 
 // Admin Server-Sent Events endpoint (Real-time updates)
-const { protect, requireAdmin } = require('./middleware/auth.middleware');
 const sseTokenSupport = (req, res, next) => {
   if (req.query.token && !req.headers.authorization) {
     req.headers.authorization = `Bearer ${req.query.token}`;
