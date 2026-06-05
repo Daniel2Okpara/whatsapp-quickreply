@@ -43,7 +43,9 @@ const setRefreshTokenCookie = (res, token) => {
 
 exports.register = async (req, res) => {
   try {
+    console.log('[AUDIT][REGISTER] Entry - Request body keys:', Object.keys(req.body));
     let { email, password } = req.body;
+    console.log('[AUDIT][REGISTER] Email provided:', !!email, 'Password provided:', !!password);
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
     email = email.toLowerCase().trim();
@@ -51,9 +53,11 @@ exports.register = async (req, res) => {
     if (isDisposableEmail(email)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
 
     const userExists = await User.findOne({ email });
+    console.log('[AUDIT][REGISTER] User exists check:', !!userExists);
     if (userExists) return res.status(400).json({ error: 'User already exists' });
 
     const verificationToken = crypto.randomBytes(16).toString('hex');
+    console.log('[AUDIT][REGISTER] Creating user with email:', email, 'verificationToken:', verificationToken.substring(0, 8) + '...');
     const user = await User.create({ 
       email, 
       password, 
@@ -65,15 +69,18 @@ exports.register = async (req, res) => {
       verified: false,
       plan: 'free'
     });
+    console.log('[AUDIT][REGISTER] User created with ID:', user._id);
 
     // Verify the user was actually saved
     const savedUser = await User.findOne({ email });
+    console.log('[AUDIT][REGISTER] Saved user verification:', !!savedUser, 'ID:', savedUser?._id);
     if (!savedUser) {
       console.error(`[CRITICAL] User registration failed to save: ${email}`);
       return res.status(500).json({ error: 'Failed to create account. Please try again.' });
     }
 
     console.log(`[Auth] User registered and saved: ${email} (ID: ${user._id})`);
+    console.log('[AUDIT][REGISTER] Response: requiresVerification=true, email=', email, '_id=', user._id);
 
     // Attempt verification email in background
     emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
@@ -111,17 +118,23 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
+    console.log('[AUDIT][LOGIN] Entry - Request body keys:', Object.keys(req.body));
     let { email, password } = req.body;
+    console.log('[AUDIT][LOGIN] Email provided:', !!email, 'Password provided:', !!password);
     if (!email) return res.status(400).json({ error: 'Email is required' });
     email = email.toLowerCase().trim();
+    console.log('[AUDIT][LOGIN] Normalized email:', email);
 
     const user = await User.findOne({ email });
+    console.log('[AUDIT][LOGIN] User found:', !!user, 'ID:', user?._id);
     if (user && (await user.comparePassword(password))) {
+      console.log('[AUDIT][LOGIN] Password match: true, user.verified:', user.verified, 'user.isAdmin:', user.isAdmin);
       
       // ENFORCE VERIFICATION (Anti-Abuse Phase)
       // Existing verified users can always login
       // New unverified users (created after anti-abuse) must verify first
       if (!user.verified && !user.isAdmin) {
+        console.log('[AUDIT][LOGIN] Verification required - user not verified and not admin');
         return res.status(401).json({ 
           error: 'email_not_verified', 
           message: 'Please verify your email address to access your account. Check your inbox for a verification link.',
@@ -144,11 +157,16 @@ exports.login = async (req, res) => {
 
       user.lastLogin = new Date();
       await user.save();
+      console.log('[AUDIT][LOGIN] User lastLogin updated');
 
       const accessToken = generateToken(user);
       const refreshToken = generateRefreshToken(user._id);
+      console.log('[AUDIT][LOGIN] accessToken generated (length:', accessToken.length, ')');
+      console.log('[AUDIT][LOGIN] refreshToken generated (length:', refreshToken.length, ')');
       setRefreshTokenCookie(res, refreshToken);
+      console.log('[AUDIT][LOGIN] Refresh token cookie set');
 
+      console.log('[AUDIT][LOGIN] Response: _id=', user._id, 'email=', user.email, 'accessToken included: true', 'refreshToken included: true');
       return res.json({
         _id: user._id, 
         email: user.email, 
@@ -172,25 +190,50 @@ exports.login = async (req, res) => {
 
 exports.requestEmailChange = async (req, res) => {
   try {
-    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
+    console.log('[AUDIT][EMAIL_CHANGE] Entry');
+    console.log('[AUDIT][EMAIL_CHANGE] req.user exists:', !!req.user, 'req.user.id:', req.user?.id);
+    if (!req.user || !req.user.id) {
+      console.log('[AUDIT][EMAIL_CHANGE] No req.user.id - returning 401');
+      return res.status(401).json({ error: 'Session required' });
+    }
 
     const payloadEmail = req.body && (req.body.newEmail || req.body.email);
     const queryEmail = req.query && (req.query.newEmail || req.query.email);
     const incomingEmail = String(payloadEmail || queryEmail || '').trim();
+    console.log('[AUDIT][EMAIL_CHANGE] payloadEmail:', payloadEmail, 'queryEmail:', queryEmail, 'incomingEmail:', incomingEmail);
 
-    if (!incomingEmail) return res.status(400).json({ error: 'New email is required' });
+    if (!incomingEmail) {
+      console.log('[AUDIT][EMAIL_CHANGE] No incoming email - returning 400');
+      return res.status(400).json({ error: 'New email is required' });
+    }
 
     const normalizedEmail = incomingEmail.toLowerCase();
-    if (!validator.isEmail(normalizedEmail)) return res.status(400).json({ error: 'Invalid email format' });
-    if (isDisposableEmail(normalizedEmail)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
+    console.log('[AUDIT][EMAIL_CHANGE] Normalized email:', normalizedEmail);
+    if (!validator.isEmail(normalizedEmail)) {
+      console.log('[AUDIT][EMAIL_CHANGE] Invalid email format - returning 400');
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+    if (isDisposableEmail(normalizedEmail)) {
+      console.log('[AUDIT][EMAIL_CHANGE] Disposable email - returning 400');
+      return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
+    }
 
     const emailTaken = await User.findOne({ email: normalizedEmail });
-    if (emailTaken && String(emailTaken._id) !== String(req.user.id)) return res.status(400).json({ error: 'Email already in use' });
+    console.log('[AUDIT][EMAIL_CHANGE] Email already in use check:', !!emailTaken, 'takenByDifferentUser:', emailTaken && String(emailTaken._id) !== String(req.user.id));
+    if (emailTaken && String(emailTaken._id) !== String(req.user.id)) {
+      console.log('[AUDIT][EMAIL_CHANGE] Email taken by different user - returning 400');
+      return res.status(400).json({ error: 'Email already in use' });
+    }
 
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    console.log('[AUDIT][EMAIL_CHANGE] User found by req.user.id:', !!user, 'current email:', user?.email);
+    if (!user) {
+      console.log('[AUDIT][EMAIL_CHANGE] User not found - returning 404');
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     const oldEmail = user.email;
+    console.log('[AUDIT][EMAIL_CHANGE] Changing email from', oldEmail, 'to', normalizedEmail);
     user.email = normalizedEmail;
     user.verified = true;
     user.pendingEmail = null;
@@ -198,18 +241,22 @@ exports.requestEmailChange = async (req, res) => {
     user.pendingEmailExpires = null;
     user.emailHistory.push({ oldEmail, newEmail: normalizedEmail, changedAt: new Date() });
     await user.save();
+    console.log('[AUDIT][EMAIL_CHANGE] Database update successful - user saved');
 
-    console.log(`[Auth] Email changed immediately for authenticated user: ${oldEmail} -> ${newEmail} (User: ${user._id})`);
+    console.log(`[Auth] Email changed immediately for authenticated user: ${oldEmail} -> ${normalizedEmail} (User: ${user._id})`);
 
     // Generate a fresh access token and set refresh cookie so the extension stays authenticated
     try {
       const accessToken = generateToken(user);
       const refreshToken = generateRefreshToken(user._id);
+      console.log('[AUDIT][EMAIL_CHANGE] New tokens generated - accessToken length:', accessToken.length, 'refreshToken length:', refreshToken.length);
       setRefreshTokenCookie(res, refreshToken);
+      console.log('[AUDIT][EMAIL_CHANGE] New refresh cookie set');
 
       // Broadcast updated user to admins so admin UI can sync
       try {
         const eventsService = require('../services/events.service');
+        console.log('[AUDIT][EMAIL_CHANGE] Broadcasting user_updated to admins');
         eventsService.broadcastToAdmins('user_updated', {
           _id: user._id,
           email: user.email,
@@ -218,10 +265,12 @@ exports.requestEmailChange = async (req, res) => {
           verified: user.verified,
           updatedAt: new Date()
         });
+        console.log('[AUDIT][EMAIL_CHANGE] Broadcast successful');
       } catch (e) {
         console.warn('[Warning] Failed to broadcast user update:', e.message);
       }
 
+      console.log('[AUDIT][EMAIL_CHANGE] Response: success=true, email=', user.email, 'verified=', user.verified, 'accessToken included: true');
       return res.json({ 
         success: true, 
         message: 'Email updated successfully',
@@ -285,15 +334,20 @@ exports.wipeMyAccount = async (req, res) => {
 
 exports.verificationStatus = async (req, res) => {
   try {
+    console.log('[AUDIT][VERIFICATION_STATUS] Entry - Query keys:', Object.keys(req.query));
     const { email } = req.query;
+    console.log('[AUDIT][VERIFICATION_STATUS] Email provided:', !!email);
     if (!email) return res.status(400).json({ error: 'Email required' });
     
     const user = await User.findOne({ email: email.toLowerCase().trim() });
+    console.log('[AUDIT][VERIFICATION_STATUS] User found:', !!user, 'ID:', user?._id, 'verified:', user?.verified);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
     if (user.verified) {
       const accessToken = generateToken(user);
       const refreshToken = generateRefreshToken(user._id);
+      console.log('[AUDIT][VERIFICATION_STATUS] Tokens generated - accessToken length:', accessToken.length, 'refreshToken length:', refreshToken.length);
+      console.log('[AUDIT][VERIFICATION_STATUS] Response: verified=true, _id=', user._id, 'email=', user.email, 'accessToken included: true', 'refreshToken included: true');
       return res.json({
         verified: true,
         _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
@@ -301,6 +355,7 @@ exports.verificationStatus = async (req, res) => {
       });
     }
     
+    console.log('[AUDIT][VERIFICATION_STATUS] Response: verified=false');
     return res.json({ verified: false });
   } catch (error) {
     console.error('Status error', error);
@@ -369,48 +424,78 @@ exports.getTemplates = async (req, res) => {
 
 exports.refresh = async (req, res) => {
   try {
+    console.log('[AUDIT][REFRESH] Entry');
+    const hasCookie = !!req.cookies.refreshToken;
+    const hasBody = !!req.body.refreshToken;
+    console.log('[AUDIT][REFRESH] hasCookie:', hasCookie, 'hasBody:', hasBody);
+    console.log('[AUDIT][REFRESH] Cookie value (first 20 chars):', req.cookies.refreshToken ? req.cookies.refreshToken.substring(0, 20) + '...' : 'none');
+    console.log('[AUDIT][REFRESH] Body value (first 20 chars):', req.body.refreshToken ? req.body.refreshToken.substring(0, 20) + '...' : 'none');
+    
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
-    if (!refreshToken) return res.status(401).json({ error: 'No refresh token provided' });
+    if (!refreshToken) {
+      console.log('[AUDIT][REFRESH] No refresh token provided - returning 401');
+      return res.status(401).json({ error: 'No refresh token provided' });
+    }
 
     jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET || 'refresh_secret_production_key_2026', async (err, decoded) => {
-      if (err) return res.status(403).json({ error: 'Invalid or expired refresh token' });
+      if (err) {
+        console.log('[AUDIT][REFRESH] JWT verify failed:', err.message, '- returning 403');
+        return res.status(403).json({ error: 'Invalid or expired refresh token' });
+      }
+      console.log('[AUDIT][REFRESH] JWT verify succeeded - userId resolved:', decoded.id);
       const user = await User.findById(decoded.id);
-      if (!user) return res.status(404).json({ error: 'User not found' });
-      return res.json({ accessToken: generateToken(user) });
+      console.log('[AUDIT][REFRESH] User found by ID:', !!user, 'ID:', user?._id);
+      if (!user) {
+        console.log('[AUDIT][REFRESH] User not found - returning 404');
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const newAccessToken = generateToken(user);
+      console.log('[AUDIT][REFRESH] New JWT generated (length:', newAccessToken.length, ') - returning success');
+      return res.json({ accessToken: newAccessToken });
     });
   } catch (err) {
-    console.error('Refresh error', err);
+    console.error('[AUDIT][REFRESH] Refresh error:', err);
     return res.status(500).json({ error: 'Server error during refresh' });
   }
 };
 
 exports.verifyEmail = async (req, res) => {
   try {
+    console.log('[AUDIT][VERIFY] Entry - Query keys:', Object.keys(req.query));
     const { token, email } = req.query;
+    console.log('[AUDIT][VERIFY] Token provided:', !!token, 'Email provided:', !!email);
     if (!token) return res.status(400).json({ error: 'Token required' });
 
     let user;
     if (email) {
       user = await User.findOne({ email: email.toLowerCase().trim() });
+      console.log('[AUDIT][VERIFY] User found by email:', !!user, 'ID:', user?._id);
     }
 
     if (!user) {
       user = await User.findOne({ verificationToken: token });
+      console.log('[AUDIT][VERIFY] User found by token:', !!user, 'ID:', user?._id);
     }
 
-    if (!user) return res.status(400).json({ error: 'User not found' });
+    if (!user) {
+      console.log('[AUDIT][VERIFY] User not found - returning 400');
+      return res.status(400).json({ error: 'User not found' });
+    }
 
     // If already verified, just return success
     if (user.verified) {
+      console.log('[AUDIT][VERIFY] User already verified - returning success');
       return res.json({ success: true, message: 'Email is already verified' });
     }
 
     if (user.verificationToken !== token) {
+      console.log('[AUDIT][VERIFY] Token mismatch - returning 400');
       return res.status(400).json({ error: 'Invalid verification token' });
     }
     
     // Check if token is expired
     if (user.verificationExpires && new Date() > user.verificationExpires) {
+      console.log('[AUDIT][VERIFY] Token expired - returning 400');
       return res.status(400).json({ error: 'Verification token has expired. Please request a new one.' });
     }
     
@@ -420,6 +505,7 @@ exports.verifyEmail = async (req, res) => {
     await user.save();
     
     console.log(`[Auth] Email verified: ${user.email}`);
+    console.log('[AUDIT][VERIFY] WARNING: No tokens generated after verifyEmail - user must call verificationStatus');
     
     // Broadcast new verified user to admins
     try {
