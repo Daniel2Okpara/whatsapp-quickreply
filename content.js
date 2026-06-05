@@ -28,31 +28,43 @@
   }
 
   async function getStoredAuthToken() {
+    console.log('[AUDIT][EXTENSION][getStoredAuthToken] Entry');
     const keys = ['jwtToken', 'accessToken', 'refreshToken', 'token'];
     let stored = {};
     try {
       stored = await new Promise(resolve => storageGet(keys, resolve));
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Runtime storage keys found:', Object.keys(stored).filter(k => !!stored[k]));
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Runtime storage - jwtToken:', !!stored.jwtToken, 'accessToken:', !!stored.accessToken, 'refreshToken:', !!stored.refreshToken, 'token:', !!stored.token);
     } catch (e) {
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Runtime storage error:', e.message);
       stored = {};
     }
     let token = (stored && (stored.jwtToken || stored.accessToken || stored.token)) || '';
     if (token) {
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Token found in runtime storage - returning');
       try { console.log('[Content] getStoredAuthToken found runtime storage token keys=', Object.keys(stored).filter(k => !!stored[k])); } catch (e) {}
       return token;
     }
 
     try {
       stored = await new Promise(resolve => chrome.storage.local.get(keys, resolve));
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Local storage keys found:', Object.keys(stored).filter(k => !!stored[k]));
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Local storage - jwtToken:', !!stored.jwtToken, 'accessToken:', !!stored.accessToken, 'refreshToken:', !!stored.refreshToken, 'token:', !!stored.token);
     } catch (e) {
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Local storage error:', e.message);
       stored = {};
     }
     token = (stored && (stored.jwtToken || stored.accessToken || stored.token)) || '';
     if (token) {
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Token found in local storage - returning');
       try { console.log('[Content] getStoredAuthToken found local storage token keys=', Object.keys(stored).filter(k => !!stored[k])); } catch (e) {}
       return token;
     }
 
+    console.log('[AUDIT][EXTENSION][getStoredAuthToken] No token found, attempting refresh');
+    console.log('[AUDIT][EXTENSION][getStoredAuthToken] Refresh token available:', !!stored.refreshToken);
     const refreshBody = stored.refreshToken ? JSON.stringify({ refreshToken: stored.refreshToken }) : undefined;
+    console.log('[AUDIT][EXTENSION][getStoredAuthToken] Refresh body prepared:', !!refreshBody);
     try {
       const refreshRes = await fetch(`${BACKEND_URL}/auth/refresh`, {
         method: 'POST',
@@ -60,24 +72,32 @@
         headers: refreshBody ? { 'Content-Type': 'application/json' } : undefined,
         body: refreshBody
       });
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] /auth/refresh response status:', refreshRes.status);
       if (!refreshRes.ok) {
         try { console.warn('[Content] /auth/refresh returned non-ok', refreshRes.status, refreshRes.statusText); } catch (e) {}
+        console.log('[AUDIT][EXTENSION][getStoredAuthToken] /auth/refresh failed - returning empty token');
       } else {
         const refreshData = await refreshRes.json();
         const refreshed = refreshData.accessToken || refreshData.jwtToken;
+        console.log('[AUDIT][EXTENSION][getStoredAuthToken] /auth/refresh response keys:', Object.keys(refreshData || {}), 'hasToken:', !!refreshed);
         try { console.log('[Content] /auth/refresh response keys=', Object.keys(refreshData || {}), 'hasToken=', !!refreshed); } catch(e) {}
         if (refreshed) {
+          console.log('[AUDIT][EXTENSION][getStoredAuthToken] Saving refreshed token to chrome.storage.local');
           chrome.storage.local.set({ jwtToken: refreshed }, () => {
             try { console.log('[Content] Saved refreshed auth token from /auth/refresh'); } catch(e) {}
           });
+          console.log('[AUDIT][EXTENSION][getStoredAuthToken] Returning refreshed token');
           return refreshed;
         }
         try { console.warn('[Content] /auth/refresh did not return an accessToken/jwtToken', refreshData); } catch(e) {}
+        console.log('[AUDIT][EXTENSION][getStoredAuthToken] /auth/refresh did not return token - returning empty');
       }
     } catch (err) {
+      console.log('[AUDIT][EXTENSION][getStoredAuthToken] Refresh fetch error:', err.message);
       try { console.error('[Content] refresh token fetch failed', err); } catch(e) {}
     }
 
+    console.log('[AUDIT][EXTENSION][getStoredAuthToken] No token available - returning empty string');
     return '';
   }
 
@@ -919,22 +939,32 @@
     const changeSave = shadow.querySelector('#waqr-change-email-save');
     const changeErr  = shadow.querySelector('#waqr-change-email-error');
     changeSave.addEventListener('click', async () => {
+      console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Entry');
       const cur = (shadow.querySelector('#waqr-change-current').value || '').trim().toLowerCase();
       const nw  = (shadow.querySelector('#waqr-change-new').value  || '').trim().toLowerCase();
+      console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Current email:', cur, 'New email:', nw);
       changeErr.style.display = 'none';
       const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!valid.test(cur) || !valid.test(nw)) {
+        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Invalid email format');
         changeErr.textContent = 'Please enter valid emails'; changeErr.style.display = 'block'; return;
       }
-      if (cur === nw) { changeErr.textContent = 'New email must be different'; changeErr.style.display = 'block'; return; }
+      if (cur === nw) { 
+        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Emails are the same');
+        changeErr.textContent = 'New email must be different'; changeErr.style.display = 'block'; return; 
+      }
+      console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Calling getStoredAuthToken');
       const token = await getStoredAuthToken();
+      console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Token retrieved:', !!token, 'length:', token ? token.length : 0);
       try { console.log('[Content] email-change token found=', !!token); } catch(e) {}
       if (!token) {
+        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] No token available - showing error');
         changeErr.textContent = 'Please reconnect the extension before changing your email.';
         changeErr.style.display = 'block';
         return;
       }
       try {
+        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Calling /auth/request-email-change');
         const resp = await fetch(`${BACKEND_URL}/auth/request-email-change`, {
           method: 'POST',
           headers: {
@@ -943,8 +973,13 @@
           },
           body: JSON.stringify({ newEmail: nw })
         });
+        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Response status:', resp.status);
         const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) { changeErr.textContent = data.error || `Failed (${resp.status})`; changeErr.style.display = 'block'; return; }
+        console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Response data:', data);
+        if (!resp.ok) { 
+          console.log('[AUDIT][EXTENSION][EMAIL_CHANGE] Request failed - showing error');
+          changeErr.textContent = data.error || `Failed (${resp.status})`; changeErr.style.display = 'block'; return; 
+        }
         storageSet({ email: nw, jwtToken: data.accessToken || token }, () => {
           changeBox.style.display = 'none';
           settingsPanel.style.display = 'none';

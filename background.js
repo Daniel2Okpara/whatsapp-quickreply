@@ -36,7 +36,9 @@ async function fetchWithTimeout(url, options = {}, timeout = 20000) {
 }
 
 async function authenticatedFetch(url, options = {}) {
+  console.log('[AUDIT][BACKGROUND][authenticatedFetch] Entry - URL:', url);
   const data = await storageGet(['jwtToken']);
+  console.log('[AUDIT][BACKGROUND][authenticatedFetch] jwtToken from storage:', !!data.jwtToken, 'length:', data.jwtToken ? data.jwtToken.length : 0);
   if (!options.headers) options.headers = {};
   if (data.jwtToken) options.headers['Authorization'] = `Bearer ${data.jwtToken}`;
   
@@ -45,25 +47,43 @@ async function authenticatedFetch(url, options = {}) {
   options.credentials = 'include'; 
 
   let res = await fetchWithTimeout(url, options);
+  console.log('[AUDIT][BACKGROUND][authenticatedFetch] Initial response status:', res.status);
 
   if (res.status === 401 || res.status === 403) {
+    console.log('[AUDIT][BACKGROUND][authenticatedFetch] Got 401/403 - attempting refresh');
     try {
-      const refreshRes = await fetchWithTimeout(`${BACKEND_URL}/auth/refresh`, { method: 'POST', credentials: 'include' });
+      const stored = await storageGet(['refreshToken']);
+      console.log('[AUDIT][BACKGROUND][authenticatedFetch] refreshToken from storage:', !!stored.refreshToken, 'length:', stored.refreshToken ? stored.refreshToken.length : 0);
+      const refreshBody = stored.refreshToken ? JSON.stringify({ refreshToken: stored.refreshToken }) : undefined;
+      console.log('[AUDIT][BACKGROUND][authenticatedFetch] Refresh body prepared:', !!refreshBody);
+      const refreshRes = await fetchWithTimeout(`${BACKEND_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: refreshBody ? { 'Content-Type': 'application/json' } : undefined,
+        body: refreshBody
+      });
+      console.log('[AUDIT][BACKGROUND][authenticatedFetch] /auth/refresh response status:', refreshRes.status);
       if (refreshRes.ok) {
         const refreshData = await refreshRes.json();
+        console.log('[AUDIT][BACKGROUND][authenticatedFetch] /auth/refresh response keys:', Object.keys(refreshData), 'hasAccessToken:', !!refreshData.accessToken);
         if (refreshData.accessToken) {
+          console.log('[AUDIT][BACKGROUND][authenticatedFetch] Saving new jwtToken to storage');
           await storageSet({ jwtToken: refreshData.accessToken });
           options.headers['Authorization'] = `Bearer ${refreshData.accessToken}`;
+          console.log('[AUDIT][BACKGROUND][authenticatedFetch] Retrying original request with new token');
           res = await fetchWithTimeout(url, options);
+          console.log('[AUDIT][BACKGROUND][authenticatedFetch] Retry response status:', res.status);
         }
       } else {
+        console.log('[AUDIT][BACKGROUND][authenticatedFetch] /auth/refresh failed - clearing jwtToken');
         await storageSet({ jwtToken: null });
       }
     } catch (err) {
-      console.error('Auto-refresh failed or network error:', err);
+      console.error('[AUDIT][BACKGROUND][authenticatedFetch] Auto-refresh failed or network error:', err);
       throw err; // rethrow to be caught by the feature handler
     }
   }
+  console.log('[AUDIT][BACKGROUND][authenticatedFetch] Returning response with status:', res.status);
   return res;
 }
 
