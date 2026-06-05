@@ -15,7 +15,8 @@ const {
   updateFeatures,
   getFeatureMatrix,
   getExtensionLinks,
-  wipeMyAccount
+  wipeMyAccount,
+  deleteAccount
 } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const handshakeController = require('../controllers/handshake.controller');
@@ -53,5 +54,6 @@ router.get('/get-templates', protect, getTemplates);
 router.post('/update-features', protect, updateFeatures);
 router.get('/features', getFeatureMatrix); // Public endpoint showing all features
 router.get('/extension-links', getExtensionLinks); // Public endpoint for install links
+router.delete('/delete-account', protect, deleteAccount); // Delete user account
 
 module.exports = router;

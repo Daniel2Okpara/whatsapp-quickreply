@@ -654,6 +654,30 @@ exports.updateFeatures = async (req, res) => {
   }
 };
 
+exports.deleteAccount = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Authentication required' });
+    
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    const email = user.email;
+    console.log(`[Auth] Deleting user account: ${email}`);
+    
+    await User.findByIdAndDelete(req.user.id);
+    
+    console.log(`[Auth] User account deleted successfully: ${email}`);
+    
+    return res.json({ 
+      success: true, 
+      message: 'Account deleted successfully' 
+    });
+  } catch (error) {
+    console.error('Delete account error', error);
+    return res.status(500).json({ error: 'Server error deleting account' });
+  }
+};
+
 exports.getFeatureMatrix = async (req, res) => {
   try {
     const features = require('../config/features');
