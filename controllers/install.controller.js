@@ -83,6 +83,7 @@ exports.listInstalls = async (req, res) => {
       .sort({ installDate: -1 })
       .skip(skip)
       .limit(limit)
+      .populate('userId', 'email plan isPro isAdmin role')
       .lean();
 
     return res.json({ 
