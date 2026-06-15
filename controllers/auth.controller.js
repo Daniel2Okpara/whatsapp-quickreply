@@ -21,10 +21,15 @@ const isDisposableEmail = (email) => {
 };
 
 // Helper to generate JWTs
+// Admin/super_admin tokens last 7 days so dashboard sessions persist.
+// Regular user (extension) tokens stay at 15 minutes for security.
 const generateToken = (user) => {
-  return jwt.sign({ id: user._id, isAdmin: user.isAdmin, role: user.role || 'user' }, process.env.JWT_SECRET || 'super_secret_production_key_2026', {
-    expiresIn: '15m'
-  });
+  const isAdminUser = user.isAdmin || user.role === 'admin' || user.role === 'super_admin';
+  return jwt.sign(
+    { id: user._id, isAdmin: user.isAdmin, role: user.role || 'user' },
+    process.env.JWT_SECRET || 'super_secret_production_key_2026',
+    { expiresIn: isAdminUser ? '7d' : '15m' }
+  );
 };
 
 const generateRefreshToken = (id) => {
