@@ -44,6 +44,9 @@ const userSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
   }],
   lastLogin: { type: Date, default: Date.now },
+  devices: [{ type: String }],
+  accountStatus: { type: String, enum: ['active', 'inactive', 'suspended'], default: 'active' },
+  lastActive: { type: Date, default: Date.now },
   emailHistory: [{
     oldEmail: String,
     newEmail: String,

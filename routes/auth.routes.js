@@ -17,6 +17,8 @@ const {
   getExtensionLinks,
   wipeMyAccount,
   deleteAccount
+  startTrial,
+  licenseStatus
 } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const handshakeController = require('../controllers/handshake.controller');
@@ -55,5 +57,9 @@ router.post('/update-features', protect, updateFeatures);
 router.get('/features', getFeatureMatrix); // Public endpoint showing all features
 router.get('/extension-links', getExtensionLinks); // Public endpoint for install links
 router.delete('/delete-account', protect, deleteAccount); // Delete user account
+
+// Trial and Licensing endpoints
+router.post('/start-trial', protect, startTrial);
+router.get('/license/status', protect, licenseStatus);
 
 module.exports = router;

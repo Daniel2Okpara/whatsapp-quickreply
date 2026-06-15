@@ -44,92 +44,74 @@ const setRefreshTokenCookie = (res, token) => {
 
 exports.register = async (req, res) => {
   try {
-    console.log('[AUDIT][REGISTER] Entry - Request body keys:', Object.keys(req.body));
-    let { email, password } = req.body;
-    console.log('[AUDIT][REGISTER] Email provided:', !!email, 'Password provided:', !!password);
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+    let { email, password, chromeId } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
 
     email = email.toLowerCase().trim();
     if (!validator.isEmail(email)) return res.status(400).json({ error: 'Invalid email format' });
     if (isDisposableEmail(email)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
 
-    const userExists = await User.findOne({ email });
-    console.log('[AUDIT][REGISTER] User exists check:', !!userExists);
-    if (userExists) return res.status(400).json({ error: 'User already exists' });
-
-    const verificationToken = crypto.randomBytes(16).toString('hex');
-    console.log('[AUDIT][REGISTER] Creating user with email:', email, 'verificationToken:', verificationToken.substring(0, 8) + '...');
-    const user = await User.create({ 
-      email, 
-      password, 
-      isAdmin: false,
-      role: 'user',
-      adminStatus: 'none',
-      verificationToken,
-      verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-      verified: false,
-      plan: 'free'
-    });
-    console.log('[AUDIT][REGISTER] User created with ID:', user._id);
-
-    // Verify the user was actually saved
-    const savedUser = await User.findOne({ email });
-    console.log('[AUDIT][REGISTER] Saved user verification:', !!savedUser, 'ID:', savedUser?._id);
-    if (!savedUser) {
-      console.error(`[CRITICAL] User registration failed to save: ${email}`);
-      return res.status(500).json({ error: 'Failed to create account. Please try again.' });
-    }
-
-    console.log(`[Auth] User registered and saved: ${email} (ID: ${user._id})`);
-    console.log('[AUDIT][REGISTER] Response: requiresVerification=true, email=', email, '_id=', user._id);
-
-    // Attempt verification email in background
-    emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
+    let user = await User.findOne({ email });
+    const verificationToken = require('crypto').randomBytes(16).toString('hex');
+    let isNewUser = false;
     
-    // Broadcast to admins via SSE
-    try {
-      const eventsService = require('../services/events.service');
-      eventsService.broadcastToAdmins('new_user', {
-        _id: user._id,
-        email: user.email,
-        plan: user.plan,
-        isPro: user.isPro,
-        isAdmin: user.isAdmin,
-        role: user.role || 'user',
-        adminStatus: user.adminStatus || 'none',
-        verified: user.verified,
-        createdAt: user.createdAt || new Date()
+    if (user) {
+      user.verificationToken = verificationToken;
+      user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await user.save();
+    } else {
+      isNewUser = true;
+      const adminCount = await User.countDocuments({ isAdmin: true });
+      const isAdmin = adminCount === 0;
+
+      user = await User.create({ 
+        email, 
+        password: password || require('crypto').randomBytes(16).toString('hex'),
+        isAdmin,
+        role: isAdmin ? 'admin' : 'user',
+        adminStatus: isAdmin ? 'approved' : 'none',
+        verificationToken,
+        verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        verified: false,
+        plan: 'free'
       });
-    } catch (e) {
-      console.warn('[Warning] Failed to broadcast new_user SSE', e.message);
     }
 
-    // Link any existing installs to this user (if chromeId is provided)
-    if (req.body.chromeId) {
+    if (chromeId) {
       try {
-        const install = await Install.findOne({ chromeId: req.body.chromeId });
+        const Install = require('../models/install.model');
+        const install = await Install.findOne({ chromeId });
         if (install) {
           install.email = email;
           install.userId = user._id;
           install.registered = true;
           await install.save();
-          console.log(`[Auth] Linked install ${req.body.chromeId} to user ${email}`);
         }
-      } catch (e) {
-        console.warn('[Warning] Failed to link install to user:', e.message);
-      }
+      } catch (e) {}
     }
 
-    return res.status(201).json({
-      message: 'Registration successful. Please verify your email.',
+    if (isNewUser) {
+      try {
+        const eventsService = require('../services/events.service');
+        eventsService.broadcastToAdmins('new_user', {
+          _id: user._id, email: user.email, plan: user.plan, isPro: user.isPro,
+          isAdmin: user.isAdmin, role: user.role || 'user', adminStatus: user.adminStatus || 'none',
+          verified: user.verified, createdAt: user.createdAt || new Date()
+        });
+      } catch (e) {}
+    }
+
+    const emailService = require('../services/email.service');
+    emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Verification link sent to your email. Please check your inbox.',
       requiresVerification: true,
-      email: user.email,
-      _id: user._id,
-      verified: false
+      email: user.email
     });
   } catch (error) {
-    console.error('[Registration error]', error);
-    return res.status(500).json({ error: 'Server error during registration' });
+    return res.status(500).json({ error: 'Server error during authentication request' });
   }
 };
 
@@ -351,28 +333,58 @@ exports.wipeMyAccount = async (req, res) => {
 
 exports.verificationStatus = async (req, res) => {
   try {
-    console.log('[AUDIT][VERIFICATION_STATUS] Entry - Query keys:', Object.keys(req.query));
-    const { email } = req.query;
-    console.log('[AUDIT][VERIFICATION_STATUS] Email provided:', !!email);
+    const { email, deviceId } = req.query;
     if (!email) return res.status(400).json({ error: 'Email required' });
     
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-    console.log('[AUDIT][VERIFICATION_STATUS] User found:', !!user, 'ID:', user?._id, 'verified:', user?.verified);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
     if (user.verified) {
+      if (deviceId) {
+        // Link device
+        if (!user.devices) user.devices = [];
+        if (!user.devices.includes(deviceId)) {
+          user.devices.push(deviceId);
+          await user.save();
+        }
+        
+        try {
+          const Device = require('../models/device.model');
+          let deviceRecord = await Device.findOne({ deviceId });
+          if (!deviceRecord) {
+            deviceRecord = await Device.create({ deviceId, emailsUsed: [user.email] });
+          } else if (!deviceRecord.emailsUsed.includes(user.email)) {
+            deviceRecord.emailsUsed.push(user.email);
+            await deviceRecord.save();
+          }
+        } catch (e) {
+          console.error('[Device Tracking Error]', e);
+        }
+      }
+
       const accessToken = generateToken(user);
       const refreshToken = generateRefreshToken(user._id);
-      console.log('[AUDIT][VERIFICATION_STATUS] Tokens generated - accessToken length:', accessToken.length, 'refreshToken length:', refreshToken.length);
-      console.log('[AUDIT][VERIFICATION_STATUS] Response: verified=true, _id=', user._id, 'email=', user.email, 'accessToken included: true', 'refreshToken included: true');
+      
+      const trialActive = user.plan === 'trial' && user.trialEndsAt && new Date() < user.trialEndsAt;
+
       return res.json({
         verified: true,
-        _id: user._id, email: user.email, isPro: user.isPro, isAdmin: user.isAdmin, plan: user.plan,
-        accessToken, refreshToken
+        _id: user._id, 
+        email: user.email, 
+        isPro: user.isPro || user.plan === 'pro', 
+        isAdmin: user.isAdmin, 
+        plan: user.plan,
+        trialUsed: !!user.trialUsed,
+        trialActive: trialActive,
+        subscriptionStatus: user.subscriptionStatus || 'inactive',
+        subscriptionExpiry: user.subscriptionExpiry || null,
+        accountStatus: user.accountStatus || 'active',
+        devices: user.devices || [],
+        accessToken, 
+        refreshToken
       });
     }
     
-    console.log('[AUDIT][VERIFICATION_STATUS] Response: verified=false');
     return res.json({ verified: false });
   } catch (error) {
     console.error('Status error', error);
@@ -736,3 +748,76 @@ exports.getExtensionLinks = async (req, res) => {
     return res.status(500).json({ error: 'Server error fetching links' });
   }
 };
+
+
+exports.startTrial = async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+    if (!deviceId) return res.status(400).json({ error: 'Device ID is required' });
+    
+    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Authentication required' });
+    const User = require('../models/user.model');
+    const Device = require('../models/device.model');
+    
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    let deviceRecord = await Device.findOne({ deviceId });
+    if (!deviceRecord) {
+      deviceRecord = await Device.create({ deviceId, emailsUsed: [user.email] });
+    }
+    
+    if (user.trialUsed) {
+      return res.status(403).json({ success: false, error: 'TRIAL_ALREADY_USED', message: 'This email has already used a free trial.' });
+    }
+    
+    if (deviceRecord.trialUsed) {
+      return res.status(403).json({ success: false, error: 'DEVICE_TRIAL_USED', message: 'A free trial has already been used on this device.' });
+    }
+    
+    // Grant trial
+    user.trialUsed = true;
+    user.plan = 'trial';
+    user.trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    await user.save();
+    
+    deviceRecord.trialUsed = true;
+    await deviceRecord.save();
+    
+    return res.json({
+      success: true,
+      trialActive: true,
+      expiryDate: user.trialEndsAt,
+      planType: 'trial',
+      message: 'Free trial activated successfully.'
+    });
+  } catch (error) {
+    console.error('Start trial error', error);
+    return res.status(500).json({ error: 'Failed to start trial' });
+  }
+};
+
+exports.licenseStatus = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Authentication required' });
+    const User = require('../models/user.model');
+    
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    const trialActive = user.plan === 'trial' && user.trialEndsAt && new Date() < user.trialEndsAt;
+    
+    return res.json({
+      trialActive: trialActive,
+      trialUsed: !!user.trialUsed,
+      planType: user.plan,
+      expiryDate: user.trialEndsAt || user.subscriptionExpiry || null,
+      isPro: user.isPro || user.plan === 'pro',
+      subscriptionStatus: user.subscriptionStatus || 'inactive'
+    });
+  } catch (error) {
+    console.error('License status error', error);
+    return res.status(500).json({ error: 'Failed to retrieve license status' });
+  }
+};
+
