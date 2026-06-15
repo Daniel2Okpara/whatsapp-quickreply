@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { 
-  register, 
-  login, 
-  getProfile, 
-  verifyEmail, 
-  resendVerification, 
+const {
+  register,
+  login,
+  getProfile,
+  verifyEmail,
+  resendVerification,
   verificationStatus,
-  requestEmailChange, 
+  requestEmailChange,
   confirmEmailChange,
   refresh,
   syncTemplates,
@@ -16,7 +16,7 @@ const {
   getFeatureMatrix,
   getExtensionLinks,
   wipeMyAccount,
-  deleteAccount
+  deleteAccount,
   startTrial,
   licenseStatus
 } = require('../controllers/auth.controller');
@@ -54,9 +54,9 @@ router.get('/get-templates', protect, getTemplates);
 
 // Features & Settings
 router.post('/update-features', protect, updateFeatures);
-router.get('/features', getFeatureMatrix); // Public endpoint showing all features
-router.get('/extension-links', getExtensionLinks); // Public endpoint for install links
-router.delete('/delete-account', protect, deleteAccount); // Delete user account
+router.get('/features', getFeatureMatrix);
+router.get('/extension-links', getExtensionLinks);
+router.delete('/delete-account', protect, deleteAccount);
 
 // Trial and Licensing endpoints
 router.post('/start-trial', protect, startTrial);
