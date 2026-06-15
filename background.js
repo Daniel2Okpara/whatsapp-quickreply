@@ -87,6 +87,31 @@ async function authenticatedFetch(url, options = {}) {
   return res;
 }
 
+// Track Chrome Store install
+async function trackInstall() {
+  try {
+    const chromeId = await new Promise(resolve => {
+      chrome.management.getSelf(info => resolve(info.id));
+    });
+    
+    const manifest = chrome.runtime.getManifest();
+    
+    await fetch(`${BACKEND_URL}/install/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chromeId,
+        version: manifest.version,
+        platform: 'chrome'
+      })
+    }).catch(err => console.error('[Install] Failed to track install:', err));
+    
+    console.log('[Install] Successfully tracked Chrome Store install');
+  } catch (err) {
+    console.error('[Install] Error tracking install:', err);
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   // V11.0: Wake up the server on install/startup
   fetch(`${BACKEND_URL}/health`).catch(() => {});
@@ -110,28 +135,11 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 
   // Track Chrome Store install
-  try {
-    const chromeId = await new Promise(resolve => {
-      chrome.management.getSelf(info => resolve(info.id));
-    });
-    
-    const manifest = chrome.runtime.getManifest();
-    
-    await fetch(`${BACKEND_URL}/install/track`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chromeId,
-        version: manifest.version,
-        platform: 'chrome'
-      })
-    }).catch(err => console.error('[Install] Failed to track install:', err));
-    
-    console.log('[Install] Successfully tracked Chrome Store install');
-  } catch (err) {
-    console.error('[Install] Error tracking install:', err);
-  }
+  await trackInstall();
 });
+
+// Periodically track install to sync data
+setInterval(trackInstall, 300000); // Every 5 minutes
 
 // Listen for messages from content script
 function safeSendResponse(sendResponse, data) {
