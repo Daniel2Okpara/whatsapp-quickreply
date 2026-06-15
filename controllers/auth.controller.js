@@ -309,12 +309,49 @@ exports.requestEmailChange = async (req, res) => {
 
     const oldEmail = user.email;
     console.log('[AUDIT][EMAIL_CHANGE] Changing email from', oldEmail, 'to', normalizedEmail);
+    
+    // Preserve all trial and subscription history
+    const preservedFields = {
+      trialUsed: user.trialUsed,
+      trialActive: user.trialActive,
+      trialStartedAt: user.trialStartedAt,
+      trialEndsAt: user.trialEndsAt,
+      trialDurationDays: user.trialDurationDays,
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionStartedAt: user.subscriptionStartedAt,
+      subscriptionEndsAt: user.subscriptionEndsAt,
+      subscriptionCancelledAt: user.subscriptionCancelledAt,
+      subscriptionPlan: user.subscriptionPlan,
+      plan: user.plan,
+      isPro: user.isPro,
+      devices: user.devices,
+      templates: user.templates,
+      features: user.features,
+      creditsUsed: user.creditsUsed,
+      dailyUsage: user.dailyUsage,
+      lastUsageReset: user.lastUsageReset,
+      fraudFlags: user.fraudFlags,
+      metadata: user.metadata
+    };
+    
+    // Update email while preserving all history
     user.email = normalizedEmail;
     user.verified = true;
     user.pendingEmail = null;
     user.pendingEmailToken = null;
     user.pendingEmailExpires = null;
-    user.emailHistory.push({ oldEmail, newEmail: normalizedEmail, changedAt: new Date() });
+    
+    // Add email history entry
+    user.emailHistory.push({ 
+      oldEmail, 
+      newEmail: normalizedEmail, 
+      changedAt: new Date(),
+      changedBy: 'user'
+    });
+    
+    // Restore all preserved fields
+    Object.assign(user, preservedFields);
+    
     await user.save();
     console.log('[AUDIT][EMAIL_CHANGE] Database update successful - user saved');
 
@@ -338,6 +375,8 @@ exports.requestEmailChange = async (req, res) => {
           plan: user.plan,
           isPro: user.isPro,
           verified: user.verified,
+          trialUsed: user.trialUsed,
+          subscriptionStatus: user.subscriptionStatus,
           updatedAt: new Date()
         });
         console.log('[AUDIT][EMAIL_CHANGE] Broadcast successful');
@@ -351,6 +390,9 @@ exports.requestEmailChange = async (req, res) => {
         message: 'Email updated successfully',
         email: user.email,
         verified: user.verified,
+        trialUsed: user.trialUsed,
+        subscriptionStatus: user.subscriptionStatus,
+        plan: user.plan,
         accessToken
       });
     } catch (err) {
