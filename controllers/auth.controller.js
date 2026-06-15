@@ -49,7 +49,7 @@ const setRefreshTokenCookie = (res, token) => {
 
 exports.register = async (req, res) => {
   try {
-    let { email, password, chromeId } = req.body;
+    let { email, password, chromeId, deviceId } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
     email = email.toLowerCase().trim();
@@ -57,44 +57,73 @@ exports.register = async (req, res) => {
     if (isDisposableEmail(email)) return res.status(400).json({ error: 'Disposable email addresses are not allowed' });
 
     let user = await User.findOne({ email });
-    const verificationToken = require('crypto').randomBytes(16).toString('hex');
+    const verificationToken = crypto.randomBytes(16).toString('hex');
     let isNewUser = false;
     
     if (user) {
+      // User exists - treat as login/recovery flow
+      // Update verification token for existing user
       user.verificationToken = verificationToken;
       user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      user.lastActive = new Date();
+      
+      // Link device if provided
+      if (deviceId) {
+        await linkDeviceToUser(user, deviceId);
+      }
+      
       await user.save();
+      console.log(`[Auth] Existing user found, sending verification: ${email}`);
     } else {
+      // New user - create account
       isNewUser = true;
       const adminCount = await User.countDocuments({ isAdmin: true });
       const isAdmin = adminCount === 0;
 
       user = await User.create({ 
         email, 
-        password: password || require('crypto').randomBytes(16).toString('hex'),
+        password: password || crypto.randomBytes(16).toString('hex'),
         isAdmin,
         role: isAdmin ? 'admin' : 'user',
         adminStatus: isAdmin ? 'approved' : 'none',
         verificationToken,
         verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
         verified: false,
-        plan: 'free'
+        plan: 'free',
+        trialUsed: false,
+        trialActive: false,
+        accountStatus: 'active',
+        metadata: {
+          source: 'extension',
+          createdAt: new Date()
+        }
       });
+      
+      // Link device if provided
+      if (deviceId) {
+        await linkDeviceToUser(user, deviceId);
+      }
+      
+      console.log(`[Auth] New user created: ${email} (ID: ${user._id})`);
     }
 
+    // Link Chrome install if provided
     if (chromeId) {
       try {
-        const Install = require('../models/install.model');
         const install = await Install.findOne({ chromeId });
         if (install) {
           install.email = email;
           install.userId = user._id;
           install.registered = true;
           await install.save();
+          console.log(`[Auth] Linked Chrome install ${chromeId} to user ${email}`);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('[Auth] Error linking Chrome install:', e);
+      }
     }
 
+    // Broadcast new user to admins
     if (isNewUser) {
       try {
         const eventsService = require('../services/events.service');
@@ -103,22 +132,64 @@ exports.register = async (req, res) => {
           isAdmin: user.isAdmin, role: user.role || 'user', adminStatus: user.adminStatus || 'none',
           verified: user.verified, createdAt: user.createdAt || new Date()
         });
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[Auth] Failed to broadcast new user:', e.message);
+      }
     }
 
-    const emailService = require('../services/email.service');
+    // Send verification email
     emailService.sendVerificationEmail(email, verificationToken).catch(e => console.error('Verification email failed', e));
     
     return res.status(200).json({
       success: true,
-      message: 'Verification link sent to your email. Please check your inbox.',
+      message: isNewUser ? 'Account created. Verification link sent to your email.' : 'Verification link sent to your email.',
       requiresVerification: true,
-      email: user.email
+      email: user.email,
+      isNewUser
     });
   } catch (error) {
+    console.error('[Auth] Register error:', error);
     return res.status(500).json({ error: 'Server error during authentication request' });
   }
 };
+
+// Helper function to link device to user
+async function linkDeviceToUser(user, deviceId) {
+  if (!user.devices) user.devices = [];
+  
+  // Check if device already exists
+  const existingDevice = user.devices.find(d => d.deviceId === deviceId);
+  if (existingDevice) {
+    existingDevice.lastSeen = new Date();
+    existingDevice.isActive = true;
+  } else {
+    user.devices.push({
+      deviceId,
+      deviceName: `Device ${user.devices.length + 1}`,
+      platform: 'chrome',
+      lastSeen: new Date(),
+      isActive: true
+    });
+  }
+  
+  // Update device model for fraud prevention
+  try {
+    const Device = require('../models/device.model');
+    let deviceRecord = await Device.findOne({ deviceId });
+    if (!deviceRecord) {
+      deviceRecord = await Device.create({ 
+        deviceId, 
+        emailsUsed: [user.email],
+        trialUsed: user.trialUsed || false
+      });
+    } else if (!deviceRecord.emailsUsed.includes(user.email)) {
+      deviceRecord.emailsUsed.push(user.email);
+      await deviceRecord.save();
+    }
+  } catch (e) {
+    console.error('[Auth] Error updating device record:', e);
+  }
+}
 
 exports.login = async (req, res) => {
   try {
@@ -336,64 +407,89 @@ exports.wipeMyAccount = async (req, res) => {
   }
 };
 
-exports.verificationStatus = async (req, res) => {
+exports.getAccountStatus = async (req, res) => {
   try {
     const { email, deviceId } = req.query;
     if (!email) return res.status(400).json({ error: 'Email required' });
     
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
     
-    if (user.verified) {
-      if (deviceId) {
-        // Link device
-        if (!user.devices) user.devices = [];
-        if (!user.devices.includes(deviceId)) {
-          user.devices.push(deviceId);
-          await user.save();
-        }
-        
-        try {
-          const Device = require('../models/device.model');
-          let deviceRecord = await Device.findOne({ deviceId });
-          if (!deviceRecord) {
-            deviceRecord = await Device.create({ deviceId, emailsUsed: [user.email] });
-          } else if (!deviceRecord.emailsUsed.includes(user.email)) {
-            deviceRecord.emailsUsed.push(user.email);
-            await deviceRecord.save();
-          }
-        } catch (e) {
-          console.error('[Device Tracking Error]', e);
-        }
-      }
-
-      const accessToken = generateToken(user);
-      const refreshToken = generateRefreshToken(user._id);
-      
-      const trialActive = user.plan === 'trial' && user.trialEndsAt && new Date() < user.trialEndsAt;
-
+    if (!user) {
       return res.json({
-        verified: true,
-        _id: user._id, 
-        email: user.email, 
-        isPro: user.isPro || user.plan === 'pro', 
-        isAdmin: user.isAdmin, 
-        plan: user.plan,
-        trialUsed: !!user.trialUsed,
-        trialActive: trialActive,
-        subscriptionStatus: user.subscriptionStatus || 'inactive',
-        subscriptionExpiry: user.subscriptionExpiry || null,
-        accountStatus: user.accountStatus || 'active',
-        devices: user.devices || [],
-        accessToken, 
-        refreshToken
+        exists: false,
+        message: 'Account not found'
       });
     }
     
-    return res.json({ verified: false });
+    // Link device if provided
+    if (deviceId) {
+      await linkDeviceToUser(user, deviceId);
+      await user.save();
+    }
+    
+    // Calculate trial status
+    const trialActive = user.trialActive && user.trialEndsAt && new Date() < user.trialEndsAt;
+    const trialExpired = user.trialEndsAt && new Date() > user.trialEndsAt;
+    
+    // Calculate subscription status
+    const subscriptionActive = user.subscriptionStatus === 'active' && 
+                            user.subscriptionEndsAt && 
+                            new Date() < user.subscriptionEndsAt;
+    const subscriptionExpired = user.subscriptionEndsAt && new Date() > user.subscriptionEndsAt;
+    
+    // Determine what action to show
+    let action = 'upgrade'; // default
+    if (subscriptionActive) {
+      action = 'manage';
+    } else if (!user.trialUsed && !subscriptionActive) {
+      action = 'start_trial';
+    } else if (user.trialUsed && !subscriptionActive) {
+      action = 'upgrade';
+    }
+    
+    return res.json({
+      exists: true,
+      email: user.email,
+      verified: user.verified,
+      accountStatus: user.accountStatus,
+      
+      // Trial information
+      trialUsed: !!user.trialUsed,
+      trialActive: trialActive,
+      trialExpired: trialExpired,
+      trialStartedAt: user.trialStartedAt,
+      trialEndsAt: user.trialEndsAt,
+      trialDurationDays: user.trialDurationDays || 3,
+      
+      // Subscription information
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionActive: subscriptionActive,
+      subscriptionExpired: subscriptionExpired,
+      subscriptionStartedAt: user.subscriptionStartedAt,
+      subscriptionEndsAt: user.subscriptionEndsAt,
+      subscriptionCancelledAt: user.subscriptionCancelledAt,
+      subscriptionPlan: user.subscriptionPlan,
+      
+      // Plan information
+      plan: user.plan,
+      isPro: user.isPro || user.plan === 'pro',
+      
+      // Device information
+      devices: user.devices || [],
+      currentDevice: deviceId ? user.devices.find(d => d.deviceId === deviceId) : null,
+      
+      // Action to show
+      action: action,
+      
+      // Metadata
+      createdAt: user.createdAt,
+      lastActive: user.lastActive,
+      lastLogin: user.lastLogin
+    });
   } catch (error) {
-    console.error('Status error', error);
-    return res.status(500).json({ error: 'Status check failed' });
+    console.error('Get account status error:', error);
+    return res.status(500).json({ error: 'Failed to retrieve account status' });
   }
 };
 
@@ -496,8 +592,8 @@ exports.refresh = async (req, res) => {
 exports.verifyEmail = async (req, res) => {
   try {
     console.log('[AUDIT][VERIFY] Entry - Query keys:', Object.keys(req.query));
-    const { token, email } = req.query;
-    console.log('[AUDIT][VERIFY] Token provided:', !!token, 'Email provided:', !!email);
+    const { token, email, deviceId } = req.query;
+    console.log('[AUDIT][VERIFY] Token provided:', !!token, 'Email provided:', !!email, 'DeviceId provided:', !!deviceId);
     if (!token) return res.status(400).json({ error: 'Token required' });
 
     let user;
@@ -516,10 +612,49 @@ exports.verifyEmail = async (req, res) => {
       return res.status(400).json({ error: 'User not found' });
     }
 
-    // If already verified, just return success
+    // If already verified, return account status (login/recovery flow)
     if (user.verified) {
-      console.log('[AUDIT][VERIFY] User already verified - returning success');
-      return res.json({ success: true, message: 'Email is already verified' });
+      console.log('[AUDIT][VERIFY] User already verified - returning account status');
+      
+      // Link device if provided
+      if (deviceId) {
+        await linkDeviceToUser(user, deviceId);
+        await user.save();
+      }
+      
+      // Update last active
+      user.lastActive = new Date();
+      user.lastLogin = new Date();
+      await user.save();
+      
+      // Generate tokens for automatic login
+      const accessToken = generateToken(user);
+      const refreshToken = generateRefreshToken(user._id);
+      setRefreshTokenCookie(res, refreshToken);
+      
+      // Return comprehensive account status
+      return res.json({ 
+        success: true, 
+        message: 'Email already verified. Account restored.',
+        verified: true,
+        isNewUser: false,
+        _id: user._id, 
+        email: user.email, 
+        isPro: user.isPro || user.plan === 'pro', 
+        isAdmin: user.isAdmin, 
+        role: user.role || 'user',
+        adminStatus: user.adminStatus || 'none',
+        plan: user.plan,
+        trialUsed: !!user.trialUsed,
+        trialActive: user.trialActive && user.trialEndsAt && new Date() < user.trialEndsAt,
+        trialEndsAt: user.trialEndsAt,
+        subscriptionStatus: user.subscriptionStatus || 'inactive',
+        subscriptionEndsAt: user.subscriptionEndsAt,
+        accountStatus: user.accountStatus || 'active',
+        devices: user.devices || [],
+        accessToken, 
+        refreshToken
+      });
     }
 
     if (user.verificationToken !== token) {
@@ -533,13 +668,26 @@ exports.verifyEmail = async (req, res) => {
       return res.status(400).json({ error: 'Verification token has expired. Please request a new one.' });
     }
     
+    // Verify the user
     user.verified = true;
     user.verificationToken = null;
     user.verificationExpires = null;
+    user.lastActive = new Date();
+    user.lastLogin = new Date();
+    
+    // Link device if provided
+    if (deviceId) {
+      await linkDeviceToUser(user, deviceId);
+    }
+    
     await user.save();
     
     console.log(`[Auth] Email verified: ${user.email}`);
-    console.log('[AUDIT][VERIFY] WARNING: No tokens generated after verifyEmail - user must call verificationStatus');
+    
+    // Generate tokens for automatic login
+    const accessToken = generateToken(user);
+    const refreshToken = generateRefreshToken(user._id);
+    setRefreshTokenCookie(res, refreshToken);
     
     // Broadcast new verified user to admins
     try {
@@ -555,7 +703,29 @@ exports.verifyEmail = async (req, res) => {
       console.warn('[Warning] Failed to broadcast user verification:', e.message);
     }
     
-    return res.json({ success: true, message: 'Email verified successfully' });
+    // Return comprehensive account status
+    return res.json({ 
+      success: true, 
+      message: 'Email verified successfully',
+      verified: true,
+      isNewUser: true,
+      _id: user._id, 
+      email: user.email, 
+      isPro: user.isPro || user.plan === 'pro', 
+      isAdmin: user.isAdmin, 
+      role: user.role || 'user',
+      adminStatus: user.adminStatus || 'none',
+      plan: user.plan,
+      trialUsed: !!user.trialUsed,
+      trialActive: user.trialActive && user.trialEndsAt && new Date() < user.trialEndsAt,
+      trialEndsAt: user.trialEndsAt,
+      subscriptionStatus: user.subscriptionStatus || 'inactive',
+      subscriptionEndsAt: user.subscriptionEndsAt,
+      accountStatus: user.accountStatus || 'active',
+      devices: user.devices || [],
+      accessToken, 
+      refreshToken
+    });
   } catch (error) {
     console.error('Verify error', error);
     return res.status(500).json({ error: 'Verification failed' });
@@ -761,43 +931,77 @@ exports.startTrial = async (req, res) => {
     if (!deviceId) return res.status(400).json({ error: 'Device ID is required' });
     
     if (!req.user || !req.user.id) return res.status(401).json({ error: 'Authentication required' });
-    const User = require('../models/user.model');
-    const Device = require('../models/device.model');
     
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
-    let deviceRecord = await Device.findOne({ deviceId });
-    if (!deviceRecord) {
-      deviceRecord = await Device.create({ deviceId, emailsUsed: [user.email] });
-    }
-    
+    // Check if trial already used at account level (permanent flag)
     if (user.trialUsed) {
-      return res.status(403).json({ success: false, error: 'TRIAL_ALREADY_USED', message: 'This email has already used a free trial.' });
+      return res.status(403).json({ 
+        success: false, 
+        error: 'TRIAL_ALREADY_USED', 
+        message: 'This email has already used a free trial.' 
+      });
     }
     
-    if (deviceRecord.trialUsed) {
-      return res.status(403).json({ success: false, error: 'DEVICE_TRIAL_USED', message: 'A free trial has already been used on this device.' });
+    // Check device-level trial usage for fraud prevention
+    try {
+      const Device = require('../models/device.model');
+      let deviceRecord = await Device.findOne({ deviceId });
+      
+      if (deviceRecord && deviceRecord.trialUsed) {
+        // Check if this device has been used with this email before
+        const emailUsedOnDevice = deviceRecord.emailsUsed && deviceRecord.emailsUsed.includes(user.email);
+        if (!emailUsedOnDevice) {
+          return res.status(403).json({ 
+            success: false, 
+            error: 'DEVICE_TRIAL_USED', 
+            message: 'A free trial has already been used on this device with a different email.' 
+          });
+        }
+      }
+      
+      if (!deviceRecord) {
+        deviceRecord = await Device.create({ 
+          deviceId, 
+          emailsUsed: [user.email],
+          trialUsed: true
+        });
+      } else {
+        deviceRecord.trialUsed = true;
+        if (!deviceRecord.emailsUsed) deviceRecord.emailsUsed = [];
+        if (!deviceRecord.emailsUsed.includes(user.email)) {
+          deviceRecord.emailsUsed.push(user.email);
+        }
+        await deviceRecord.save();
+      }
+    } catch (e) {
+      console.error('[Trial] Device tracking error:', e);
+      // Continue with trial activation even if device tracking fails
     }
     
-    // Grant trial
-    user.trialUsed = true;
+    // Grant trial at account level (permanent flag)
+    user.trialUsed = true; // Permanent flag - NEVER reset
+    user.trialActive = true;
     user.plan = 'trial';
-    user.trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    user.trialStartedAt = new Date();
+    user.trialEndsAt = new Date(Date.now() + (user.trialDurationDays || 3) * 24 * 60 * 60 * 1000);
+    user.lastActive = new Date();
     await user.save();
     
-    deviceRecord.trialUsed = true;
-    await deviceRecord.save();
+    console.log(`[Trial] Trial activated for user: ${user.email} (ID: ${user._id})`);
     
     return res.json({
       success: true,
       trialActive: true,
+      trialUsed: true,
       expiryDate: user.trialEndsAt,
       planType: 'trial',
+      trialDurationDays: user.trialDurationDays || 3,
       message: 'Free trial activated successfully.'
     });
   } catch (error) {
-    console.error('Start trial error', error);
+    console.error('Start trial error:', error);
     return res.status(500).json({ error: 'Failed to start trial' });
   }
 };
@@ -805,23 +1009,74 @@ exports.startTrial = async (req, res) => {
 exports.licenseStatus = async (req, res) => {
   try {
     if (!req.user || !req.user.id) return res.status(401).json({ error: 'Authentication required' });
-    const User = require('../models/user.model');
     
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
-    const trialActive = user.plan === 'trial' && user.trialEndsAt && new Date() < user.trialEndsAt;
+    // Calculate trial status
+    const trialActive = user.trialActive && user.trialEndsAt && new Date() < user.trialEndsAt;
+    const trialExpired = user.trialEndsAt && new Date() > user.trialEndsAt;
+    
+    // Calculate subscription status
+    const subscriptionActive = user.subscriptionStatus === 'active' && 
+                            user.subscriptionEndsAt && 
+                            new Date() < user.subscriptionEndsAt;
+    const subscriptionExpired = user.subscriptionEndsAt && new Date() > user.subscriptionEndsAt;
+    
+    // Determine current plan status
+    let currentPlan = 'free';
+    let planStatus = 'inactive';
+    
+    if (subscriptionActive) {
+      currentPlan = 'pro';
+      planStatus = 'active';
+    } else if (trialActive) {
+      currentPlan = 'trial';
+      planStatus = 'active';
+    } else if (user.plan === 'pro') {
+      currentPlan = 'pro';
+      planStatus = subscriptionExpired ? 'expired' : 'inactive';
+    } else if (user.plan === 'trial') {
+      currentPlan = 'trial';
+      planStatus = trialExpired ? 'expired' : 'inactive';
+    }
     
     return res.json({
+      // Current status
+      currentPlan: currentPlan,
+      planStatus: planStatus,
+      isPro: user.isPro || currentPlan === 'pro',
+      
+      // Trial information
       trialActive: trialActive,
       trialUsed: !!user.trialUsed,
-      planType: user.plan,
-      expiryDate: user.trialEndsAt || user.subscriptionExpiry || null,
-      isPro: user.isPro || user.plan === 'pro',
-      subscriptionStatus: user.subscriptionStatus || 'inactive'
+      trialExpired: trialExpired,
+      trialStartedAt: user.trialStartedAt,
+      trialEndsAt: user.trialEndsAt,
+      trialDurationDays: user.trialDurationDays || 3,
+      
+      // Subscription information
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionActive: subscriptionActive,
+      subscriptionExpired: subscriptionExpired,
+      subscriptionStartedAt: user.subscriptionStartedAt,
+      subscriptionEndsAt: user.subscriptionEndsAt,
+      subscriptionCancelledAt: user.subscriptionCancelledAt,
+      subscriptionPlan: user.subscriptionPlan,
+      
+      // Account information
+      email: user.email,
+      accountStatus: user.accountStatus,
+      verified: user.verified,
+      
+      // Device information
+      devices: user.devices || [],
+      
+      // Action to show
+      action: subscriptionActive ? 'manage' : (!user.trialUsed ? 'start_trial' : 'upgrade')
     });
   } catch (error) {
-    console.error('License status error', error);
+    console.error('License status error:', error);
     return res.status(500).json({ error: 'Failed to retrieve license status' });
   }
 };

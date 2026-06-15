@@ -18,7 +18,8 @@ const {
   wipeMyAccount,
   deleteAccount,
   startTrial,
-  licenseStatus
+  licenseStatus,
+  getAccountStatus
 } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const handshakeController = require('../controllers/handshake.controller');
@@ -28,6 +29,7 @@ router.post('/login', login);
 router.post('/resend-verification', resendVerification);
 router.get('/verification-status', verificationStatus);
 router.get('/verify-email', verifyEmail);
+router.get('/account-status', getAccountStatus);
 router.get('/profile', protect, getProfile);
 router.post('/refresh', refresh);
 
