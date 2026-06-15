@@ -108,6 +108,29 @@ chrome.runtime.onInstalled.addListener(async () => {
       apiKey: null
     });
   }
+
+  // Track Chrome Store install
+  try {
+    const chromeId = await new Promise(resolve => {
+      chrome.management.getSelf(info => resolve(info.id));
+    });
+    
+    const manifest = chrome.runtime.getManifest();
+    
+    await fetch(`${BACKEND_URL}/install/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chromeId,
+        version: manifest.version,
+        platform: 'chrome'
+      })
+    }).catch(err => console.error('[Install] Failed to track install:', err));
+    
+    console.log('[Install] Successfully tracked Chrome Store install');
+  } catch (err) {
+    console.error('[Install] Error tracking install:', err);
+  }
 });
 
 // Listen for messages from content script
