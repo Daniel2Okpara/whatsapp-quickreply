@@ -13,6 +13,18 @@ function storageSet(obj) {
   return new Promise(resolve => chrome.storage.local.set(obj, resolve));
 }
 
+// Generate and store persistent deviceId
+async function getOrCreateDeviceId() {
+  const data = await storageGet(['deviceId']);
+  if (data.deviceId) return data.deviceId;
+  
+  // Generate new deviceId
+  const deviceId = 'waqr_' + crypto.randomUUID();
+  await storageSet({ deviceId });
+  console.log('[Device] Generated new deviceId:', deviceId);
+  return deviceId;
+}
+
 function broadcastRuntimeMessage(message) {
   chrome.runtime.sendMessage(message, () => {
     if (chrome.runtime.lastError) {
@@ -119,6 +131,9 @@ chrome.runtime.onInstalled.addListener(async () => {
   // Clear any stored position data to prevent off-screen issues
   chrome.storage.local.remove(['fabPosition', 'panelPosition']);
 
+  // Generate or retrieve persistent deviceId
+  const deviceId = await getOrCreateDeviceId();
+
   const existing = await storageGet(null);
   if (!existing || !existing.templates) {
     await storageSet({
@@ -130,8 +145,12 @@ chrome.runtime.onInstalled.addListener(async () => {
         improve: 0, 
         lastReset: new Date().toISOString().split('T')[0] 
       },
-      apiKey: null
+      apiKey: null,
+      deviceId: deviceId
     });
+  } else {
+    // Ensure deviceId is set for existing installations
+    await storageSet({ deviceId });
   }
 
   // Track Chrome Store install
@@ -215,8 +234,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.type === 'GET_ACCOUNT_STATUS') {
+    checkAccountStatus(request.email).then(sendResponse);
+    return true;
+  }
+
+  if (request.type === 'REGISTER_OR_LOGIN') {
+    handleRegisterOrLogin(request, sendResponse);
+    return true;
+  }
+
   return false;
 });
+
+// Handle register or login flow (unified verification flow)
+async function handleRegisterOrLogin(request, sendResponse) {
+  try {
+    const { email, deviceId } = request;
+    const actualDeviceId = deviceId || await getOrCreateDeviceId();
+    
+    const resp = await fetch(`${BACKEND_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, deviceId: actualDeviceId })
+    });
+    
+    const data = await resp.json();
+    if (resp.ok) {
+      sendResponse({ success: true, ...data });
+    } else {
+      sendResponse({ success: false, error: data.error });
+    }
+  } catch (error) {
+    sendResponse({ success: false, error: error.message });
+  }
+}
 
 async function syncTemplates(templates) {
   try {
@@ -414,7 +466,7 @@ async function improveMessage(payload, sendResponse) {
 
 async function refreshSubscription() {
   try {
-    const data = await storageGet(['jwtToken']);
+    const data = await storageGet(['jwtToken', 'deviceId']);
     if (!data.jwtToken) return;
 
     const resp = await authenticatedFetch(`${BACKEND_URL}/auth/profile`);
@@ -428,12 +480,29 @@ async function refreshSubscription() {
           isPro: !!body.isPro,
           subscriptionStatus: body.subscriptionStatus || 'inactive',
           trialEndsAt: body.trialEndsAt || null,
+          trialUsed: body.trialUsed || false,
           verified: !!body.verified
         });
       }
     }
   } catch (e) {
     console.warn('Subscription sync failed:', e);
+  }
+}
+
+// New function to check account status for pricing page
+async function checkAccountStatus(email) {
+  try {
+    const deviceId = await getOrCreateDeviceId();
+    const url = `${BACKEND_URL}/auth/account-status?email=${encodeURIComponent(email)}&deviceId=${deviceId}`;
+    const resp = await fetch(url);
+    if (resp.ok) {
+      return await resp.json();
+    }
+    return { exists: false };
+  } catch (e) {
+    console.error('Account status check failed:', e);
+    return { exists: false };
   }
 }
 
