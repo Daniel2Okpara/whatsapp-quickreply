@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const validator = require('validator');
 const emailService = require('../services/email.service');
+const Install = require('../models/install.model');
 
 // Comprehensive disposable email list
 const isDisposableEmail = (email) => {
@@ -101,6 +102,22 @@ exports.register = async (req, res) => {
       });
     } catch (e) {
       console.warn('[Warning] Failed to broadcast new_user SSE', e.message);
+    }
+
+    // Link any existing installs to this user (if chromeId is provided)
+    if (req.body.chromeId) {
+      try {
+        const install = await Install.findOne({ chromeId: req.body.chromeId });
+        if (install) {
+          install.email = email;
+          install.userId = user._id;
+          install.registered = true;
+          await install.save();
+          console.log(`[Auth] Linked install ${req.body.chromeId} to user ${email}`);
+        }
+      } catch (e) {
+        console.warn('[Warning] Failed to link install to user:', e.message);
+      }
     }
 
     return res.status(201).json({

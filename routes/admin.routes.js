@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
+const installController = require('../controllers/install.controller');
 const { protect, requireAdmin, requireSuperAdmin } = require('../middleware/auth.middleware');
 
 // All routes require authentication
@@ -18,6 +19,10 @@ router.post('/downgrade-plan', requireAdmin, adminController.downgradeplan);
 router.post('/simulate-webhook', requireAdmin, adminController.simulateWebhook);
 router.get('/webhook-logs', requireAdmin, adminController.listWebhookLogs);
 router.get('/feedback-stats', requireAdmin, adminController.getFeedbackStats);
+
+// Install tracking routes (Admin only)
+router.get('/installs', requireAdmin, installController.listInstalls);
+router.get('/install-stats', requireAdmin, installController.getInstallStats);
 
 // 3. Super Admin only routes
 router.get('/pending-requests', requireSuperAdmin, adminController.getPendingRequests);

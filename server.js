@@ -17,6 +17,7 @@ const authRoutes = require('./routes/auth.routes');
 const authController = require('./controllers/auth.controller');
 const { protect, requireAdmin } = require('./middleware/auth.middleware');
 const paddleRoutes = require('./routes/paddle.routes');
+const installRoutes = require('./routes/install.routes');
 
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
@@ -157,6 +158,9 @@ app.post('/transcribe', aiLimiter, aiRoutes);
 // Admin routes (protected by JWT isAdmin check)
 const adminRoutes = require('./routes/admin.routes');
 app.use('/admin', adminRoutes);
+
+// Install tracking routes (for Chrome Store install tracking)
+app.use('/install', installRoutes);
 
 // Extension compatibility routes (accept token in body/query for Chrome extension clients)
 const extensionRoutes = require('./routes/extension.routes');
