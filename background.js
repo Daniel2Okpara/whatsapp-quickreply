@@ -437,6 +437,13 @@ async function refreshSubscription() {
   }
 }
 
-chrome.runtime.onStartup.addListener(refreshSubscription);
+chrome.runtime.onStartup.addListener(async () => {
+  // Track install on startup to sync existing installs
+  await trackInstall();
+  refreshSubscription();
+});
+
+// Also track on initial load for existing installs
+trackInstall();
 refreshSubscription();
 setInterval(refreshSubscription, 45000);
