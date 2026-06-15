@@ -1,59 +1,31 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="en" class="theme-light">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>WA QuickReply — Admin Dashboard</title>
-  <link rel="stylesheet" href="/admin-static/admin.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WA QuickReply | Admin Portal</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <link rel="stylesheet" href="/admin-static/admin.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Admin Dashboard</h1>
-    <div class="controls">
-      <input id="admin-secret" type="password" placeholder="Paste your admin JWT token" />
-      <button id="load-users">Load Users</button>
-      <input id="search" placeholder="Search email or plan" />
-      <button id="export-csv">Export CSV</button>
+    <div class="admin-container">
+        <!-- Dashboard structure is rendered dynamically by admin.js -->
+        <div class="page-loading">
+            <div class="spinner"></div>
+            <p>Initializing WA QuickReply...</p>
+        </div>
     </div>
 
-    <div id="status" class="status"></div>
-    
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <h3>Total Users</h3>
-        <p id="metric-total-users">0</p>
-      </div>
-      <div class="metric-card">
-        <h3>Verified Users</h3>
-        <p id="metric-verified-users">0</p>
-      </div>
-      <div class="metric-card">
-        <h3>Pro Users</h3>
-        <p id="metric-pro-users">0</p>
-      </div>
-      <div class="metric-card">
-        <h3>Trial Users</h3>
-        <p id="metric-trial-users">0</p>
-      </div>
-      <div class="metric-card">
-        <h3>Free Users</h3>
-        <p id="metric-free-users">0</p>
-      </div>
-      <div class="metric-card">
-        <h3>Total AI Usage</h3>
-        <p id="metric-total-ai">0</p>
-      </div>
-      <div class="metric-card">
-        <h3>Daily Growth</h3>
-        <p id="metric-growth">0</p>
-      </div>
-    </div>
-
-    <div id="requests-wrap" style="margin-bottom: 40px; display: none;"></div>
-    <div id="users-wrap"></div>
-    <div id="pagination" class="pagination"></div>
-  </div>
-
-  <script src="/admin-static/admin.js"></script>
+    <!-- Scripts -->
+    <script src="/admin-static/admin.js"></script>
 </body>
 </html>
