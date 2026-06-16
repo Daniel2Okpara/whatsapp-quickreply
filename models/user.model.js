@@ -111,7 +111,7 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes for performance
-userSchema.index({ email: 1 });
+// Note: email field already has unique: true which creates an index automatically
 userSchema.index({ trialUsed: 1 });
 userSchema.index({ subscriptionStatus: 1 });
 userSchema.index({ accountStatus: 1 });
