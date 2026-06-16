@@ -102,6 +102,7 @@ async function authenticatedFetch(url, options = {}) {
 // Track Chrome Store install
 async function trackInstall() {
   try {
+    const deviceId = await getOrCreateDeviceId();
     const chromeId = await new Promise(resolve => {
       chrome.management.getSelf(info => resolve(info.id));
     });
@@ -112,13 +113,14 @@ async function trackInstall() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        deviceId,
         chromeId,
         version: manifest.version,
         platform: 'chrome'
       })
     }).catch(err => console.error('[Install] Failed to track install:', err));
     
-    console.log('[Install] Successfully tracked Chrome Store install');
+    console.log('[Install] Successfully tracked Chrome Store install with deviceId:', deviceId);
   } catch (err) {
     console.error('[Install] Error tracking install:', err);
   }
@@ -464,6 +466,56 @@ async function improveMessage(payload, sendResponse) {
   }
 }
 
+// SSE connection for real-time subscription updates
+let sseConnection = null;
+
+async function connectSSE() {
+  try {
+    const data = await storageGet(['email']);
+    if (!data.email) return;
+
+    const url = `${BACKEND_URL}/events?email=${encodeURIComponent(data.email)}`;
+    sseConnection = new EventSource(url);
+
+    sseConnection.addEventListener('subscription_update', (event) => {
+      try {
+        const update = JSON.parse(event.data);
+        console.log('[SSE] Subscription update received:', update);
+        
+        // Update local storage with new subscription state
+        storageSet({
+          plan: update.plan || 'free',
+          isPro: update.isPro || false,
+          subscriptionStatus: update.subscriptionStatus || 'inactive',
+          trialEndsAt: update.trialEndsAt || null,
+          subscriptionId: update.subscriptionId || null
+        });
+
+        // Broadcast to all extension contexts
+        broadcastRuntimeMessage({
+          type: 'SUBSCRIPTION_UPDATED',
+          plan: update.plan,
+          isPro: update.isPro,
+          subscriptionStatus: update.subscriptionStatus
+        });
+      } catch (e) {
+        console.error('[SSE] Error parsing subscription update:', e);
+      }
+    });
+
+    sseConnection.onerror = (error) => {
+      console.error('[SSE] Connection error:', error);
+      sseConnection.close();
+      // Reconnect after 5 seconds
+      setTimeout(connectSSE, 5000);
+    };
+
+    console.log('[SSE] Connected to subscription updates');
+  } catch (e) {
+    console.error('[SSE] Connection failed:', e);
+  }
+}
+
 async function refreshSubscription() {
   try {
     const data = await storageGet(['jwtToken', 'deviceId']);
@@ -483,6 +535,11 @@ async function refreshSubscription() {
           trialUsed: body.trialUsed || false,
           verified: !!body.verified
         });
+        
+        // Connect SSE if email is available
+        if (body.email && !sseConnection) {
+          connectSSE();
+        }
       }
     }
   } catch (e) {
