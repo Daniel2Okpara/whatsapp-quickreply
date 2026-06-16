@@ -12,12 +12,14 @@ exports.trackInstall = async (req, res) => {
     }
 
     // Check if install already exists by deviceId (preferred) or chromeId (fallback)
-    let install = await Install.findOne({ 
-      $or: [
-        { deviceId: deviceId },
-        { chromeId: chromeId, deviceId: { $exists: false } } // Fallback for old records
-      ]
-    });
+    let install;
+    if (deviceId) {
+      // If deviceId is provided, only check by deviceId (unique per device)
+      install = await Install.findOne({ deviceId });
+    } else {
+      // Fallback to chromeId only for backward compatibility
+      install = await Install.findOne({ chromeId, deviceId: { $exists: false } });
+    }
     
     if (install) {
       // Update last active time
