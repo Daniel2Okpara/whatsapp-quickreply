@@ -16,7 +16,6 @@ const extensionTokenSupport = (req, res, next) => {
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/resend-verification', authController.resendVerification);
-router.get('/verification-status', authController.verificationStatus);
 router.get('/verify-email', authController.verifyEmail);
 router.get('/confirm-email-change', authController.confirmEmailChange);
 
