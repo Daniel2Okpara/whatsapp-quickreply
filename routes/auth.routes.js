@@ -6,7 +6,6 @@ const {
   getProfile,
   verifyEmail,
   resendVerification,
-  verificationStatus,
   requestEmailChange,
   confirmEmailChange,
   refresh,
@@ -27,7 +26,6 @@ const handshakeController = require('../controllers/handshake.controller');
 router.post('/register', register);
 router.post('/login', login);
 router.post('/resend-verification', resendVerification);
-router.get('/verification-status', verificationStatus);
 router.get('/verify-email', verifyEmail);
 router.get('/account-status', getAccountStatus);
 router.get('/profile', protect, getProfile);
