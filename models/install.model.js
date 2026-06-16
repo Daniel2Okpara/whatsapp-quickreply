@@ -4,8 +4,7 @@ const installSchema = new mongoose.Schema({
   chromeId: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   email: {
     type: String,
