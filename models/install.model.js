@@ -3,8 +3,9 @@ const mongoose = require('mongoose');
 const installSchema = new mongoose.Schema({
   deviceId: {
     type: String,
-    required: true,
-    unique: true
+    required: false, // Made optional for backward compatibility
+    unique: true,
+    sparse: true // Allows multiple null values for unique field
   },
   chromeId: {
     type: String,

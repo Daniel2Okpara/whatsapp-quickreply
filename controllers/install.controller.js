@@ -6,29 +6,36 @@ exports.trackInstall = async (req, res) => {
   try {
     const { deviceId, chromeId, version, platform } = req.body;
     
-    if (!deviceId) {
-      return res.status(400).json({ error: 'deviceId is required' });
+    // Allow tracking with either deviceId (preferred) or chromeId (fallback for backward compatibility)
+    if (!deviceId && !chromeId) {
+      return res.status(400).json({ error: 'deviceId or chromeId is required' });
     }
 
-    // Check if install already exists by deviceId (unique per user)
-    let install = await Install.findOne({ deviceId });
+    // Check if install already exists by deviceId (preferred) or chromeId (fallback)
+    let install = await Install.findOne({ 
+      $or: [
+        { deviceId: deviceId },
+        { chromeId: chromeId, deviceId: { $exists: false } } // Fallback for old records
+      ]
+    });
     
     if (install) {
       // Update last active time
       install.lastActive = new Date();
       if (version) install.version = version;
+      if (deviceId && !install.deviceId) install.deviceId = deviceId; // Add deviceId if missing
       if (chromeId) install.chromeId = chromeId; // Update chromeId if provided
       await install.save();
-      console.log(`[Install] Updated existing install: ${deviceId}`);
+      console.log(`[Install] Updated existing install: ${install.deviceId || install.chromeId}`);
     } else {
       // Create new install record
       install = await Install.create({
-        deviceId,
+        deviceId: deviceId || null,
         chromeId: chromeId || null,
         version: version || '1.0.0',
         platform: platform || 'chrome'
       });
-      console.log(`[Install] New install tracked: ${deviceId}`);
+      console.log(`[Install] New install tracked: ${install.deviceId || install.chromeId}`);
     }
 
     return res.json({ 
