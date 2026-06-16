@@ -518,7 +518,7 @@ async function connectSSE() {
 
 async function refreshSubscription() {
   try {
-    const data = await storageGet(['jwtToken', 'deviceId']);
+    const data = await storageGet(['jwtToken', 'deviceId', 'email']);
     if (!data.jwtToken) return;
 
     const resp = await authenticatedFetch(`${BACKEND_URL}/auth/profile`);
@@ -536,7 +536,7 @@ async function refreshSubscription() {
           verified: !!body.verified
         });
         
-        // Connect SSE if email is available
+        // Connect SSE if email is available and not already connected
         if (body.email && !sseConnection) {
           connectSSE();
         }
