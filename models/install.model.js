@@ -1,10 +1,14 @@
 const mongoose = require('mongoose');
 
 const installSchema = new mongoose.Schema({
-  chromeId: {
+  deviceId: {
     type: String,
     required: true,
     unique: true
+  },
+  chromeId: {
+    type: String,
+    default: null
   },
   email: {
     type: String,

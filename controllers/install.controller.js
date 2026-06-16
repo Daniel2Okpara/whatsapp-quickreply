@@ -4,29 +4,31 @@ const crypto = require('crypto');
 
 exports.trackInstall = async (req, res) => {
   try {
-    const { chromeId, version, platform } = req.body;
+    const { deviceId, chromeId, version, platform } = req.body;
     
-    if (!chromeId) {
-      return res.status(400).json({ error: 'chromeId is required' });
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
     }
 
-    // Check if install already exists
-    let install = await Install.findOne({ chromeId });
+    // Check if install already exists by deviceId (unique per user)
+    let install = await Install.findOne({ deviceId });
     
     if (install) {
       // Update last active time
       install.lastActive = new Date();
       if (version) install.version = version;
+      if (chromeId) install.chromeId = chromeId; // Update chromeId if provided
       await install.save();
-      console.log(`[Install] Updated existing install: ${chromeId}`);
+      console.log(`[Install] Updated existing install: ${deviceId}`);
     } else {
       // Create new install record
       install = await Install.create({
-        chromeId,
+        deviceId,
+        chromeId: chromeId || null,
         version: version || '1.0.0',
         platform: platform || 'chrome'
       });
-      console.log(`[Install] New install tracked: ${chromeId}`);
+      console.log(`[Install] New install tracked: ${deviceId}`);
     }
 
     return res.json({ 
