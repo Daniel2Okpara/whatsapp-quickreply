@@ -26,6 +26,9 @@ const userSchema = new mongoose.Schema({
   trialStartedAt: { type: Date, default: null },
   trialEndsAt: { type: Date, default: null },
   trialDurationDays: { type: Number, default: 3 }, // Configurable trial duration
+  firstTrialDeviceId: { type: String, default: null }, // Track first device used for trial
+  trialGrantedAt: { type: Date, default: null }, // When trial was granted
+  trialGrantReason: { type: String, default: 'first_install' }, // Why trial was granted
   
   // Subscription Management
   subscriptionStatus: {

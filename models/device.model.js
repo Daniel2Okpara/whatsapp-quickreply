@@ -13,6 +13,11 @@ const deviceSchema = new mongoose.Schema({
     type: Boolean, 
     default: false 
   }, // PERMANENT FLAG
+  trialHistory: [{
+    email: { type: String },
+    grantedAt: { type: Date },
+    trialDurationDays: { type: Number }
+  }],
   firstSeen: { 
     type: Date, 
     default: Date.now 

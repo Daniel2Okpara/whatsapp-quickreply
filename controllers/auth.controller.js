@@ -61,19 +61,71 @@ exports.register = async (req, res) => {
     let isNewUser = false;
     
     if (user) {
-      // User exists - treat as login/recovery flow
-      // Update verification token for existing user
-      user.verificationToken = verificationToken;
-      user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      user.lastActive = new Date();
+      // User exists - ACCOUNT RECOVERY FLOW
+      console.log(`[Auth][REGISTER] Existing user found: ${email} (ID: ${user._id}, verified: ${user.verified})`);
       
       // Link device if provided
       if (deviceId) {
         await linkDeviceToUser(user, deviceId);
       }
       
+      // Update last active
+      user.lastActive = new Date();
       await user.save();
-      console.log(`[Auth] Existing user found, sending verification: ${email}`);
+      
+      // ACCOUNT RECOVERY: If user is verified, return account state + tokens
+      if (user.verified) {
+        console.log(`[Auth][REGISTER] Account recovery for verified user: ${email}`);
+        
+        const accessToken = generateToken(user);
+        const refreshToken = generateRefreshToken(user._id);
+        setRefreshTokenCookie(res, refreshToken);
+        
+        // Link Chrome install if provided
+        if (chromeId) {
+          try {
+            const install = await Install.findOne({ chromeId });
+            if (install) {
+              install.email = email;
+              install.userId = user._id;
+              install.registered = true;
+              await install.save();
+              console.log(`[Auth][REGISTER] Linked Chrome install ${chromeId} to user ${email}`);
+            }
+          } catch (e) {
+            console.error('[Auth][REGISTER] Error linking Chrome install:', e);
+          }
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Account recovered successfully',
+          requiresVerification: false,
+          isNewUser: false,
+          _id: user._id,
+          email: user.email,
+          isPro: user.isPro || user.plan === 'pro',
+          isAdmin: user.isAdmin,
+          role: user.role || 'user',
+          adminStatus: user.adminStatus || 'none',
+          plan: user.plan,
+          trialUsed: !!user.trialUsed,
+          trialActive: user.trialActive && user.trialEndsAt && new Date() < user.trialEndsAt,
+          trialEndsAt: user.trialEndsAt,
+          subscriptionStatus: user.subscriptionStatus || 'inactive',
+          subscriptionEndsAt: user.subscriptionEndsAt,
+          accountStatus: user.accountStatus || 'active',
+          devices: user.devices || [],
+          accessToken,
+          refreshToken
+        });
+      }
+      
+      // User exists but not verified - send new verification email
+      user.verificationToken = verificationToken;
+      user.verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await user.save();
+      console.log(`[Auth][REGISTER] Existing unverified user, sending verification: ${email}`);
     } else {
       // New user - create account
       isNewUser = true;
@@ -104,7 +156,7 @@ exports.register = async (req, res) => {
         await linkDeviceToUser(user, deviceId);
       }
       
-      console.log(`[Auth] New user created: ${email} (ID: ${user._id})`);
+      console.log(`[Auth][REGISTER] New user created: ${email} (ID: ${user._id})`);
     }
 
     // Link Chrome install if provided
@@ -116,10 +168,10 @@ exports.register = async (req, res) => {
           install.userId = user._id;
           install.registered = true;
           await install.save();
-          console.log(`[Auth] Linked Chrome install ${chromeId} to user ${email}`);
+          console.log(`[Auth][REGISTER] Linked Chrome install ${chromeId} to user ${email}`);
         }
       } catch (e) {
-        console.error('[Auth] Error linking Chrome install:', e);
+        console.error('[Auth][REGISTER] Error linking Chrome install:', e);
       }
     }
 
@@ -133,7 +185,7 @@ exports.register = async (req, res) => {
           verified: user.verified, createdAt: user.createdAt || new Date()
         });
       } catch (e) {
-        console.warn('[Auth] Failed to broadcast new user:', e.message);
+        console.warn('[Auth][REGISTER] Failed to broadcast new user:', e.message);
       }
     }
 
@@ -148,7 +200,7 @@ exports.register = async (req, res) => {
       isNewUser
     });
   } catch (error) {
-    console.error('[Auth] Register error:', error);
+    console.error('[Auth][REGISTER] Register error:', error);
     return res.status(500).json({ error: 'Server error during authentication request' });
   }
 };
@@ -654,9 +706,9 @@ exports.verifyEmail = async (req, res) => {
       return res.status(400).json({ error: 'User not found' });
     }
 
-    // If already verified, return account status (login/recovery flow)
+    // If already verified, return account status with tokens for auto-login
     if (user.verified) {
-      console.log('[AUDIT][VERIFY] User already verified - returning account status');
+      console.log('[AUDIT][VERIFY] User already verified - returning account status with tokens');
       
       // Link device if provided
       if (deviceId) {
@@ -674,7 +726,9 @@ exports.verifyEmail = async (req, res) => {
       const refreshToken = generateRefreshToken(user._id);
       setRefreshTokenCookie(res, refreshToken);
       
-      // Return comprehensive account status
+      console.log(`[Auth][VERIFY] Auto-login for already verified user: ${user.email} (ID: ${user._id})`);
+      
+      // Return comprehensive account status with tokens
       return res.json({ 
         success: true, 
         message: 'Email already verified. Account restored.',
@@ -724,7 +778,7 @@ exports.verifyEmail = async (req, res) => {
     
     await user.save();
     
-    console.log(`[Auth] Email verified: ${user.email}`);
+    console.log(`[Auth][VERIFY] Email verified: ${user.email} (ID: ${user._id})`);
     
     // Generate tokens for automatic login
     const accessToken = generateToken(user);
@@ -745,7 +799,9 @@ exports.verifyEmail = async (req, res) => {
       console.warn('[Warning] Failed to broadcast user verification:', e.message);
     }
     
-    // Return comprehensive account status
+    console.log(`[Auth][VERIFY] Auto-login after verification: ${user.email} (ID: ${user._id})`);
+    
+    // Return comprehensive account status with tokens for auto-login
     return res.json({ 
       success: true, 
       message: 'Email verified successfully',
@@ -977,8 +1033,12 @@ exports.startTrial = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
+    console.log(`[Auth][START_TRIAL] Trial request for user: ${user.email} (ID: ${user._id})`);
+    console.log(`[Auth][START_TRIAL] User trialUsed: ${user.trialUsed}, deviceId: ${deviceId}`);
+    
     // Check if trial already used at account level (permanent flag)
     if (user.trialUsed) {
+      console.log(`[Auth][START_TRIAL] Trial already used by email: ${user.email}`);
       return res.status(403).json({ 
         success: false, 
         error: 'TRIAL_ALREADY_USED', 
@@ -991,10 +1051,16 @@ exports.startTrial = async (req, res) => {
       const Device = require('../models/device.model');
       let deviceRecord = await Device.findOne({ deviceId });
       
+      console.log(`[Auth][START_TRIAL] Device record found: ${!!deviceRecord}`);
+      
       if (deviceRecord && deviceRecord.trialUsed) {
+        console.log(`[Auth][START_TRIAL] Device trial used, checking email history`);
         // Check if this device has been used with this email before
         const emailUsedOnDevice = deviceRecord.emailsUsed && deviceRecord.emailsUsed.includes(user.email);
+        console.log(`[Auth][START_TRIAL] Email used on device before: ${emailUsedOnDevice}`);
+        
         if (!emailUsedOnDevice) {
+          console.log(`[Auth][START_TRIAL] Trial abuse detected - device used with different email`);
           return res.status(403).json({ 
             success: false, 
             error: 'DEVICE_TRIAL_USED', 
@@ -1004,21 +1070,32 @@ exports.startTrial = async (req, res) => {
       }
       
       if (!deviceRecord) {
+        console.log(`[Auth][START_TRIAL] Creating new device record for trial`);
         deviceRecord = await Device.create({ 
           deviceId, 
           emailsUsed: [user.email],
           trialUsed: true
         });
       } else {
+        console.log(`[Auth][START_TRIAL] Updating existing device record for trial`);
         deviceRecord.trialUsed = true;
         if (!deviceRecord.emailsUsed) deviceRecord.emailsUsed = [];
         if (!deviceRecord.emailsUsed.includes(user.email)) {
           deviceRecord.emailsUsed.push(user.email);
         }
+        
+        // Add trial history
+        if (!deviceRecord.trialHistory) deviceRecord.trialHistory = [];
+        deviceRecord.trialHistory.push({
+          email: user.email,
+          grantedAt: new Date(),
+          trialDurationDays: user.trialDurationDays || 3
+        });
+        
         await deviceRecord.save();
       }
     } catch (e) {
-      console.error('[Trial] Device tracking error:', e);
+      console.error('[Auth][START_TRIAL] Device tracking error:', e);
       // Continue with trial activation even if device tracking fails
     }
     
@@ -1029,9 +1106,29 @@ exports.startTrial = async (req, res) => {
     user.trialStartedAt = new Date();
     user.trialEndsAt = new Date(Date.now() + (user.trialDurationDays || 3) * 24 * 60 * 60 * 1000);
     user.lastActive = new Date();
+    
+    // Set new trial protection fields
+    user.firstTrialDeviceId = deviceId;
+    user.trialGrantedAt = new Date();
+    user.trialGrantReason = 'user_requested';
+    
     await user.save();
     
-    console.log(`[Trial] Trial activated for user: ${user.email} (ID: ${user._id})`);
+    console.log(`[Auth][START_TRIAL] Trial activated for user: ${user.email} (ID: ${user._id})`);
+    console.log(`[Auth][START_TRIAL] Trial ends at: ${user.trialEndsAt}`);
+    
+    // Broadcast trial activation to admins
+    try {
+      const eventsService = require('../services/events.service');
+      eventsService.broadcastToAdmins('trial_started', {
+        _id: user._id,
+        email: user.email,
+        trialEndsAt: user.trialEndsAt,
+        deviceId: deviceId
+      });
+    } catch (e) {
+      console.warn('[Auth][START_TRIAL] Failed to broadcast trial start:', e.message);
+    }
     
     return res.json({
       success: true,
@@ -1043,7 +1140,7 @@ exports.startTrial = async (req, res) => {
       message: 'Free trial activated successfully.'
     });
   } catch (error) {
-    console.error('Start trial error:', error);
+    console.error('[Auth][START_TRIAL] Start trial error:', error);
     return res.status(500).json({ error: 'Failed to start trial' });
   }
 };
