@@ -1799,18 +1799,41 @@
   });
 
   // Trial Button Wire
-  shadow.getElementById('waqr-start-trial').addEventListener('click', () => {
-    storageGet(['email'], (res) => {
+  shadow.getElementById('waqr-start-trial').addEventListener('click', async () => {
+    storageGet(['email', 'jwtToken'], async (res) => {
       const email = res.email;
+      const token = res.jwtToken;
       if (!email) {
         showToast('⚠️ Please activate with your email first.');
         return;
       }
-      // Paddle Checkout URL with email prefilled
-      // Note: In a real app, this should link to your checkout page or trigger Paddle.js
-      const checkoutUrl = `https://www.wa-quick-reply.com/#pricing?email=${encodeURIComponent(email)}&trial=true`;
-      window.open(checkoutUrl, '_blank');
-      showToast('🚀 Opening secure checkout...');
+      if (!token) {
+        showToast('⚠️ Please log in to start a trial.');
+        return;
+      }
+      
+      try {
+        showToast('⏳ Starting trial...');
+        const response = await fetch(`${BACKEND_URL}/auth/start-trial`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          showToast('✅ Trial started successfully!');
+          syncPlanState(); // Refresh plan state
+        } else {
+          showToast(`❌ ${data.error || 'Failed to start trial'}`);
+        }
+      } catch (error) {
+        console.error('Trial start error:', error);
+        showToast('❌ Failed to start trial. Please try again.');
+      }
     });
   });
 
