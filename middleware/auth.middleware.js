@@ -9,22 +9,36 @@ const protect = async (req, res, next) => {
   if (res.headersSent) return;
 
   const authHeader = req.headers.authorization;
+  // Temporary debug logs to diagnose extension 404 on authenticated email-change
+  try {
+    console.log(`[Auth][protect] ${req.method} ${req.originalUrl} - Authorization header present: ${authHeader ? 'yes' : 'no'}`);
+  } catch (e) {
+    // ignore logging failures
+  }
 
   // 2. Branch: Token present
-  if (authHeader && authHeader.startsWith('Bearer')) {
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer')) {
     try {
-      const token = authHeader.split(' ')[1];
+      const token = String(authHeader.split(' ')[1] || '').trim();
       if (!token) {
+        console.warn('[Auth][protect] Bearer present but token missing; rejecting as unauthorized');
         return res.status(401).json({ error: 'Not authorized, token missing' });
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_production_key_2026');
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_production_key_2026');
+      } catch (jwtErr) {
+        console.error('[Auth][protect] JWT verify failed:', jwtErr.message);
+        return res.status(401).json({ error: 'Not authorized, token failed' });
+      }
       
-      // Attach minimal user info
+      // Attach user info including role
       req.user = { 
         id: decoded.id, 
         _id: decoded.id, 
-        isAdmin: !!decoded.isAdmin 
+        isAdmin: !!decoded.isAdmin,
+        role: decoded.role || 'user'
       };
       
       // Success: Proceed and RETURN
@@ -32,6 +46,7 @@ const protect = async (req, res, next) => {
 
     } catch (error) {
       // Failure: Send error and RETURN
+      console.error('[Auth][protect] Unexpected error:', error && error.message ? error.message : error);
       return res.status(401).json({ error: 'Not authorized, token failed' });
     }
   }
@@ -40,4 +55,29 @@ const protect = async (req, res, next) => {
   return res.status(401).json({ error: 'Not authorized, no token' });
 };
 
-module.exports = { protect };
+/**
+ * Role-Based Access Control Middlewares
+ */
+const requireAdmin = (req, res, next) => {
+  if (res.headersSent) return;
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'super_admin' || req.user.isAdmin === true)) {
+    return next();
+  }
+  return res.status(403).json({ 
+    error: 'forbidden: admin access required',
+    message: 'Your account lacks administrator privileges.'
+  });
+};
+
+const requireSuperAdmin = (req, res, next) => {
+  if (res.headersSent) return;
+  if (req.user && req.user.role === 'super_admin') {
+    return next();
+  }
+  return res.status(403).json({ 
+    error: 'forbidden: super_admin access required',
+    message: 'This operation requires Super Admin privileges.'
+  });
+};
+
+module.exports = { protect, requireAdmin, requireSuperAdmin };

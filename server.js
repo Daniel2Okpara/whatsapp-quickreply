@@ -14,18 +14,26 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const aiRoutes = require('./routes/ai.routes');
 const authRoutes = require('./routes/auth.routes');
+const authController = require('./controllers/auth.controller');
+const { protect, requireAdmin } = require('./middleware/auth.middleware');
 const paddleRoutes = require('./routes/paddle.routes');
+const installRoutes = require('./routes/install.routes');
 
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 
 const app = express();
+
+// When running behind a proxy (Render, Vercel, etc.), enable trust proxy
+// so express-rate-limit can correctly read X-Forwarded-For and identify clients.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { error: 'Too many auth requests, please try again later.' }
+  max: 20,
+  message: { error: 'Too many auth requests, please try again later.' },
+  skip: (req) => ['/verify-email', '/confirm-email-change'].includes(req.path)
 });
 
 const aiLimiter = rateLimit({
@@ -83,6 +91,15 @@ app.post('/webhook/paddle', express.raw({ type: '*/*' }), (req, res, next) => {
 app.use(express.json());
 
 // Mount auth and API routes after JSON body parser
+// Request logger for auth routes (temporary): logs method, path, origin, and presence of Authorization header
+app.use('/auth', (req, res, next) => {
+  try {
+    console.log(`[AuthRoute] ${req.method} ${req.originalUrl} - Origin: ${req.headers.origin || 'none'} - Authorization: ${req.headers.authorization ? 'yes' : 'no'}`);
+  } catch (e) {
+    // ignore logging errors
+  }
+  return next();
+});
 const signupLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
   max: 3,
@@ -105,8 +122,30 @@ const isDisposableEmail = (email) => {
   return disposableDomains.some(d => domain.includes(d));
 };
 
+const extensionTokenSupport = (req, res, next) => {
+  if (!req.headers.authorization) {
+    const token = req.body?.token || req.query?.token || req.headers['x-access-token'];
+    if (token) req.headers.authorization = `Bearer ${token}`;
+  }
+  next();
+};
+
 app.use('/auth/register', signupLimiter);
 app.use('/auth', authLimiter, authRoutes);
+
+// Legacy extension compatibility: older builds may still call these paths.
+const legacyEmailChangePaths = [
+  '/user/update-email',
+  '/user/change-email',
+  '/user/email-change',
+  '/auth/change-email',
+  '/auth/email-change'
+];
+legacyEmailChangePaths.forEach((path) => {
+  app.post(path, extensionTokenSupport, protect, authController.requestEmailChange);
+  app.put(path, extensionTokenSupport, protect, authController.requestEmailChange);
+  app.get(path, extensionTokenSupport, protect, authController.requestEmailChange);
+});
 
 // Surgical AI Routing (No root overlap)
 app.post('/ai-reply', aiLimiter, aiRoutes);
@@ -119,6 +158,13 @@ app.post('/transcribe', aiLimiter, aiRoutes);
 // Admin routes (protected by JWT isAdmin check)
 const adminRoutes = require('./routes/admin.routes');
 app.use('/admin', adminRoutes);
+
+// Install tracking routes (for Chrome Store install tracking)
+app.use('/install', installRoutes);
+
+// Extension compatibility routes (accept token in body/query for Chrome extension clients)
+const extensionRoutes = require('./routes/extension.routes');
+app.use('/extension', extensionRoutes);
 
 // Serve admin static panel at /admin-static
 app.use('/admin-static', express.static(path.join(__dirname, 'public')));
@@ -147,6 +193,29 @@ app.get('/events', (req, res) => {
   });
 });
 
+// Admin Server-Sent Events endpoint (Real-time updates)
+const sseTokenSupport = (req, res, next) => {
+  if (req.query.token && !req.headers.authorization) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+};
+
+app.get('/admin-events', sseTokenSupport, protect, requireAdmin, (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+  res.write('\n');
+
+  eventsService.addAdminClient(res);
+
+  req.on('close', () => {
+    eventsService.removeAdminClient(res);
+  });
+});
+
 // Admin dashboard moved to standalone frontend app; do not serve admin UI here.
 
 // Database connection
@@ -155,6 +224,14 @@ const connectDB = async () => {
   try {
     const conn = await mongoose.connect(uri);
     console.log(`[MongoDB]: Connected to ${conn.connection.host}`);
+    
+    // Seed Super Admin
+    try {
+      const adminController = require('./controllers/admin.controller');
+      await adminController.seedSuperAdmin();
+    } catch (e) {
+      console.error('[Admin Seeding Error]:', e);
+    }
   } catch (error) {
     console.error(`[MongoDB Error]: ${error.message}`);
     console.log('Server will continue to run without DB, but some features may fail.');

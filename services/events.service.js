@@ -1,4 +1,5 @@
 const clients = new Map(); // email -> Set(res)
+const adminClients = new Set(); // Set(res)
 
 function addClient(email, res) {
   if (!email) return;
@@ -15,6 +16,14 @@ function removeClient(email, res) {
   if (!set) return;
   set.delete(res);
   if (set.size === 0) clients.delete(email);
+}
+
+function addAdminClient(res) {
+  adminClients.add(res);
+}
+
+function removeAdminClient(res) {
+  adminClients.delete(res);
 }
 
 function sendEvent(res, event, data) {
@@ -35,4 +44,28 @@ function notifyEmail(email, data) {
   return set.size;
 }
 
-module.exports = { addClient, removeClient, notifyEmail };
+function broadcastToUser(email, event, data) {
+  const set = clients.get(email);
+  if (!set) return 0;
+  for (const res of set) {
+    sendEvent(res, event, data);
+  }
+  return set.size;
+}
+
+function broadcastToAdmins(event, data) {
+  for (const res of adminClients) {
+    sendEvent(res, event, data);
+  }
+}
+
+module.exports = { 
+  addClient, 
+  removeClient, 
+  notifyEmail,
+  addAdminClient,
+  removeAdminClient,
+  broadcastToUser,
+  broadcastToAdmins
+};
+

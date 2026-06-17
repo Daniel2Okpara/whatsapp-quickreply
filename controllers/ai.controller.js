@@ -116,6 +116,19 @@ exports.improveMessage = async (req, res) => {
 
   if (!text) return res.status(400).json({ error: 'Text to improve is required.' });
 
+  // CHECK: Style Learning Feature
+  if (req.user) {
+    const User = require('../models/user.model');
+    const user = await User.findById(req.user._id || req.user.id);
+    if (user && user.features && user.features.improveMessage === false) {
+      return res.status(403).json({ 
+        error: 'feature_disabled',
+        message: 'Improve Message feature is disabled. This feature requires PRO plan.',
+        requiresPro: true
+      });
+    }
+  }
+
   const effectiveApiKey = apiKey || process.env.OPENAI_API_KEY;
   if (!effectiveApiKey) return res.status(500).json({ error: 'AI service unavailable' });
 

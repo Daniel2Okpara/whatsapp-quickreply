@@ -23,5 +23,13 @@ services:
         sync: false
       - key: ADMIN_SECRET
         sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: SUPER_ADMIN_ID
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
       - key: NODE_ENV
         value: "production"
