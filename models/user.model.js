@@ -73,10 +73,14 @@ const userSchema = new mongoose.Schema({
   // Device Management
   devices: [{
     deviceId: { type: String, required: true },
+    chromeId: { type: String, default: null },
     deviceName: { type: String, default: null },
     platform: { type: String, default: null },
+    installDate: { type: Date, default: Date.now },
     lastSeen: { type: Date, default: Date.now },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true },
+    installCount: { type: Number, default: 1 }, // Track reinstalls
+    version: { type: String, default: '1.0.0' }
   }],
   
   // Email History for audit trail

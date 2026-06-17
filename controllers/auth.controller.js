@@ -209,19 +209,27 @@ exports.register = async (req, res) => {
 async function linkDeviceToUser(user, deviceId) {
   if (!user.devices) user.devices = [];
   
+  console.log(`[Auth][LINK_DEVICE] Linking device ${deviceId} to user ${user.email}`);
+  
   // Check if device already exists
   const existingDevice = user.devices.find(d => d.deviceId === deviceId);
   if (existingDevice) {
     existingDevice.lastSeen = new Date();
     existingDevice.isActive = true;
+    existingDevice.installCount += 1;
+    console.log(`[Auth][LINK_DEVICE] Updated existing device, install count: ${existingDevice.installCount}`);
   } else {
     user.devices.push({
       deviceId,
       deviceName: `Device ${user.devices.length + 1}`,
       platform: 'chrome',
+      installDate: new Date(),
       lastSeen: new Date(),
-      isActive: true
+      isActive: true,
+      installCount: 1,
+      version: '1.0.0'
     });
+    console.log(`[Auth][LINK_DEVICE] Added new device to user`);
   }
   
   // Update device model for fraud prevention
@@ -234,12 +242,14 @@ async function linkDeviceToUser(user, deviceId) {
         emailsUsed: [user.email],
         trialUsed: user.trialUsed || false
       });
+      console.log(`[Auth][LINK_DEVICE] Created new device record`);
     } else if (!deviceRecord.emailsUsed.includes(user.email)) {
       deviceRecord.emailsUsed.push(user.email);
       await deviceRecord.save();
+      console.log(`[Auth][LINK_DEVICE] Updated device record with new email`);
     }
   } catch (e) {
-    console.error('[Auth] Error updating device record:', e);
+    console.error('[Auth][LINK_DEVICE] Error updating device record:', e);
   }
 }
 
