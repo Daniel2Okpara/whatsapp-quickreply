@@ -54,24 +54,53 @@ exports.listUsers = async (req, res) => {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 50;
     const skip = (page - 1) * limit;
+    
+    // Optional filters
+    const { verified, plan, search } = req.query;
+    const filter = {};
+    
+    if (verified !== undefined) {
+      filter.verified = verified === 'true';
+    }
+    
+    if (plan) {
+      filter.plan = plan;
+    }
+    
+    if (search) {
+      filter.$or = [
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
 
-    const total = await User.countDocuments();
-    const users = await User.find()
+    console.log(`[Admin][LIST_USERS] Query with filter:`, JSON.stringify(filter));
+
+    const total = await User.countDocuments(filter);
+    const users = await User.find(filter)
       .select('-password')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
 
+    // Add device count to each user
+    const usersWithDeviceCount = users.map(user => ({
+      ...user,
+      deviceCount: user.devices ? user.devices.length : 0,
+      activeDeviceCount: user.devices ? user.devices.filter(d => d.isActive).length : 0
+    }));
+
+    console.log(`[Admin][LIST_USERS] Returning ${users.length} users out of ${total} total`);
+
     return res.json({ 
-      users,
+      users: usersWithDeviceCount,
       page,
       limit,
       total,
       pages: Math.ceil(total / limit)
     });
   } catch (err) {
-    console.error('[Admin] listUsers error', err);
+    console.error('[Admin][LIST_USERS] listUsers error', err);
     return res.status(500).json({ error: 'server_error' });
   }
 };
@@ -82,9 +111,19 @@ exports.getUser = async (req, res) => {
     if (!email) return res.status(400).json({ error: 'email_required' });
     const user = await User.findOne({ email }).select('-password');
     if (!user) return res.status(404).json({ error: 'not_found' });
-    return res.json({ user });
+    
+    // Add device count to user data
+    const userWithDeviceCount = {
+      ...user.toObject(),
+      deviceCount: user.devices ? user.devices.length : 0,
+      activeDeviceCount: user.devices ? user.devices.filter(d => d.isActive).length : 0
+    };
+    
+    console.log(`[Admin][GET_USER] Returning user: ${email} with ${userWithDeviceCount.deviceCount} devices`);
+    
+    return res.json({ user: userWithDeviceCount });
   } catch (err) {
-    console.error('[Admin] getUser error', err);
+    console.error('[Admin][GET_USER] getUser error', err);
     return res.status(500).json({ error: 'server_error' });
   }
 };
