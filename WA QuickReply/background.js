@@ -13,18 +13,6 @@ function storageSet(obj) {
   return new Promise(resolve => chrome.storage.local.set(obj, resolve));
 }
 
-// Generate and store persistent deviceId
-async function getOrCreateDeviceId() {
-  const data = await storageGet(['deviceId']);
-  if (data.deviceId) return data.deviceId;
-  
-  // Generate new deviceId
-  const deviceId = 'waqr_' + crypto.randomUUID();
-  await storageSet({ deviceId });
-  console.log('[Device] Generated new deviceId:', deviceId);
-  return deviceId;
-}
-
 function broadcastRuntimeMessage(message) {
   chrome.runtime.sendMessage(message, () => {
     if (chrome.runtime.lastError) {
@@ -99,42 +87,12 @@ async function authenticatedFetch(url, options = {}) {
   return res;
 }
 
-// Track Chrome Store install
-async function trackInstall() {
-  try {
-    const deviceId = await getOrCreateDeviceId();
-    const chromeId = await new Promise(resolve => {
-      chrome.management.getSelf(info => resolve(info.id));
-    });
-    
-    const manifest = chrome.runtime.getManifest();
-    
-    await fetch(`${BACKEND_URL}/install/track`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        deviceId,
-        chromeId,
-        version: manifest.version,
-        platform: 'chrome'
-      })
-    }).catch(err => console.error('[Install] Failed to track install:', err));
-    
-    console.log('[Install] Successfully tracked Chrome Store install with deviceId:', deviceId);
-  } catch (err) {
-    console.error('[Install] Error tracking install:', err);
-  }
-}
-
 chrome.runtime.onInstalled.addListener(async () => {
   // V11.0: Wake up the server on install/startup
   fetch(`${BACKEND_URL}/health`).catch(() => {});
 
   // Clear any stored position data to prevent off-screen issues
   chrome.storage.local.remove(['fabPosition', 'panelPosition']);
-
-  // Generate or retrieve persistent deviceId
-  const deviceId = await getOrCreateDeviceId();
 
   const existing = await storageGet(null);
   if (!existing || !existing.templates) {
@@ -147,20 +105,10 @@ chrome.runtime.onInstalled.addListener(async () => {
         improve: 0, 
         lastReset: new Date().toISOString().split('T')[0] 
       },
-      apiKey: null,
-      deviceId: deviceId
+      apiKey: null
     });
-  } else {
-    // Ensure deviceId is set for existing installations
-    await storageSet({ deviceId });
   }
-
-  // Track Chrome Store install
-  await trackInstall();
 });
-
-// Periodically track install to sync data
-setInterval(trackInstall, 300000); // Every 5 minutes
 
 // Listen for messages from content script
 function safeSendResponse(sendResponse, data) {
@@ -236,41 +184,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.type === 'GET_ACCOUNT_STATUS') {
-    checkAccountStatus(request.email).then(sendResponse);
-    return true;
-  }
-
-  if (request.type === 'REGISTER_OR_LOGIN') {
-    handleRegisterOrLogin(request, sendResponse);
-    return true;
-  }
-
   return false;
 });
-
-// Handle register or login flow (unified verification flow)
-async function handleRegisterOrLogin(request, sendResponse) {
-  try {
-    const { email, deviceId } = request;
-    const actualDeviceId = deviceId || await getOrCreateDeviceId();
-    
-    const resp = await fetch(`${BACKEND_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, deviceId: actualDeviceId })
-    });
-    
-    const data = await resp.json();
-    if (resp.ok) {
-      sendResponse({ success: true, ...data });
-    } else {
-      sendResponse({ success: false, error: data.error });
-    }
-  } catch (error) {
-    sendResponse({ success: false, error: error.message });
-  }
-}
 
 async function syncTemplates(templates) {
   try {
@@ -466,115 +381,11 @@ async function improveMessage(payload, sendResponse) {
   }
 }
 
-// SSE connection for real-time subscription updates
-let sseConnection = null;
-let sseRetryCount = 0;
-const MAX_SSE_RETRIES = 5;
-const SSE_RETRY_DELAY = 5000; // 5 seconds
-
-async function connectSSE() {
-  try {
-    const data = await storageGet(['email', 'jwtToken']);
-    if (!data.email) {
-      console.log('[SSE] No email in storage, skipping SSE connection');
-      return;
-    }
-    
-    if (!data.jwtToken) {
-      console.log('[SSE] No jwtToken in storage, skipping SSE connection');
-      return;
-    }
-
-    // Close existing connection if any
-    if (sseConnection) {
-      console.log('[SSE] Closing existing connection before reconnecting');
-      sseConnection.close();
-      sseConnection = null;
-    }
-
-    const url = `${BACKEND_URL}/events?email=${encodeURIComponent(data.email)}`;
-    console.log(`[SSE] Connecting to: ${url}`);
-    
-    sseConnection = new EventSource(url);
-
-    sseConnection.addEventListener('subscription_update', (event) => {
-      try {
-        const update = JSON.parse(event.data);
-        console.log('[SSE] Subscription update received:', update);
-        
-        // Update local storage with new subscription state
-        storageSet({
-          plan: update.plan || 'free',
-          isPro: update.isPro || false,
-          subscriptionStatus: update.subscriptionStatus || 'inactive',
-          trialEndsAt: update.trialEndsAt || null,
-          subscriptionId: update.subscriptionId || null
-        });
-
-        // Broadcast to all extension contexts
-        broadcastRuntimeMessage({
-          type: 'SUBSCRIPTION_UPDATED',
-          plan: update.plan,
-          isPro: update.isPro,
-          subscriptionStatus: update.subscriptionStatus
-        });
-        
-        // Reset retry count on successful message
-        sseRetryCount = 0;
-      } catch (e) {
-        console.error('[SSE] Error parsing subscription update:', e);
-      }
-    });
-
-    sseConnection.addEventListener('open', () => {
-      console.log('[SSE] Connection opened successfully');
-      sseRetryCount = 0; // Reset retry count on successful connection
-    });
-
-    sseConnection.addEventListener('error', (error) => {
-      console.error('[SSE] Connection error:', error);
-      sseConnection.close();
-      sseConnection = null;
-      
-      // Retry logic with exponential backoff
-      if (sseRetryCount < MAX_SSE_RETRIES) {
-        sseRetryCount++;
-        const retryDelay = SSE_RETRY_DELAY * Math.pow(2, sseRetryCount - 1); // Exponential backoff
-        console.log(`[SSE] Retry ${sseRetryCount}/${MAX_SSE_RETRIES} in ${retryDelay}ms`);
-        setTimeout(connectSSE, retryDelay);
-      } else {
-        console.error('[SSE] Max retries reached, giving up');
-        // Reset retry count after 5 minutes to allow reconnection attempts
-        setTimeout(() => {
-          sseRetryCount = 0;
-          console.log('[SSE] Reset retry count, will attempt reconnection');
-          connectSSE();
-        }, 5 * 60 * 1000);
-      }
-    });
-
-    console.log('[SSE] Connection initiated');
-  } catch (e) {
-    console.error('[SSE] Connection failed:', e);
-    
-    // Retry on error
-    if (sseRetryCount < MAX_SSE_RETRIES) {
-      sseRetryCount++;
-      const retryDelay = SSE_RETRY_DELAY * Math.pow(2, sseRetryCount - 1);
-      setTimeout(connectSSE, retryDelay);
-    }
-  }
-}
-
 async function refreshSubscription() {
   try {
-    const data = await storageGet(['jwtToken', 'deviceId', 'email']);
-    if (!data.jwtToken) {
-      console.log('[SSE][REFRESH] No jwtToken, skipping subscription refresh');
-      return;
-    }
+    const data = await storageGet(['jwtToken']);
+    if (!data.jwtToken) return;
 
-    console.log('[SSE][REFRESH] Refreshing subscription data');
     const resp = await authenticatedFetch(`${BACKEND_URL}/auth/profile`);
     if (resp.ok) {
       const body = await resp.json();
@@ -586,51 +397,15 @@ async function refreshSubscription() {
           isPro: !!body.isPro,
           subscriptionStatus: body.subscriptionStatus || 'inactive',
           trialEndsAt: body.trialEndsAt || null,
-          trialUsed: body.trialUsed || false,
           verified: !!body.verified
         });
-        
-        console.log('[SSE][REFRESH] Subscription data updated successfully');
-        
-        // Connect SSE if email is available and not already connected
-        if (body.email && !sseConnection) {
-          console.log('[SSE][REFRESH] Initiating SSE connection');
-          connectSSE();
-        } else if (body.email && sseConnection) {
-          console.log('[SSE][REFRESH] SSE connection already exists');
-        }
       }
-    } else {
-      console.error('[SSE][REFRESH] Failed to fetch profile:', resp.status);
     }
   } catch (e) {
-    console.warn('[SSE][REFRESH] Subscription sync failed:', e);
+    console.warn('Subscription sync failed:', e);
   }
 }
 
-// New function to check account status for pricing page
-async function checkAccountStatus(email) {
-  try {
-    const deviceId = await getOrCreateDeviceId();
-    const url = `${BACKEND_URL}/auth/account-status?email=${encodeURIComponent(email)}&deviceId=${deviceId}`;
-    const resp = await fetch(url);
-    if (resp.ok) {
-      return await resp.json();
-    }
-    return { exists: false };
-  } catch (e) {
-    console.error('Account status check failed:', e);
-    return { exists: false };
-  }
-}
-
-chrome.runtime.onStartup.addListener(async () => {
-  // Track install on startup to sync existing installs
-  await trackInstall();
-  refreshSubscription();
-});
-
-// Also track on initial load for existing installs
-trackInstall();
+chrome.runtime.onStartup.addListener(refreshSubscription);
 refreshSubscription();
 setInterval(refreshSubscription, 45000);
