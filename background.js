@@ -590,7 +590,15 @@ async function refreshSubscription() {
           verified: !!body.verified
         });
         
-        console.log('[SSE][REFRESH] Subscription data updated successfully');
+        console.log('[SSE][REFRESH] Subscription data updated successfully - plan:', body.plan, 'isPro:', body.isPro);
+        
+        // Broadcast to all extension contexts about profile update
+        broadcastRuntimeMessage({
+          type: 'PROFILE_UPDATED',
+          plan: body.plan,
+          isPro: body.isPro,
+          subscriptionStatus: body.subscriptionStatus
+        });
         
         // Connect SSE if email is available and not already connected
         if (body.email && !sseConnection) {
@@ -633,4 +641,4 @@ chrome.runtime.onStartup.addListener(async () => {
 // Also track on initial load for existing installs
 trackInstall();
 refreshSubscription();
-setInterval(refreshSubscription, 45000);
+setInterval(refreshSubscription, 30000); // Refresh every 30 seconds for faster sync

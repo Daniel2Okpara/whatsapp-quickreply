@@ -41,7 +41,30 @@ document.getElementById('save-email').addEventListener('click', async () => {
     console.log('[AUDIT][OPTIONS][SAVE_EMAIL] Response data:', respData);
 
     if (resp.ok) {
-      if (!data.jwtToken) {
+      // Check if user is already verified (new response format)
+      if (respData.verified && respData.accessToken) {
+        console.log('[AUDIT][OPTIONS][SAVE_EMAIL] User already verified - auto-login');
+        status.innerHTML = '<span style="color:#25D366;font-weight:bold;">Email already verified! Connecting...</span>';
+        chrome.storage.local.set({ 
+          email: respData.email, 
+          userId: respData._id,
+          jwtToken: respData.accessToken,
+          refreshToken: respData.refreshToken,
+          plan: respData.plan || 'free',
+          isPro: !!respData.isPro
+        }, () => {
+          try { console.log('[Options] Stored jwtToken and refreshToken (already verified):', !!respData.accessToken, !!respData.refreshToken); } catch(e){}
+          chrome.runtime.sendMessage({ type: 'STORAGE_UPDATED', keys: ['jwtToken', 'refreshToken'] }, () => {
+            if (chrome.runtime.lastError) {
+              console.warn('[Options] STORAGE_UPDATED send failed:', chrome.runtime.lastError.message);
+            }
+          });
+          setTimeout(() => {
+            status.textContent = 'Connected as ' + respData.email + '. Refresh WhatsApp to apply.';
+            document.getElementById('token').value = '';
+          }, 1500);
+        });
+      } else if (!data.jwtToken) {
         console.log('[AUDIT][OPTIONS][SAVE_EMAIL] No existing token - starting verification poll');
         status.textContent = 'Verification email sent to ' + email + '. Check your inbox. Waiting for verification...';
         
