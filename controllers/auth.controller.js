@@ -905,7 +905,43 @@ exports.resendVerification = async (req, res) => {
       return res.json({ message: 'Verification email sent', _id: user._id });
     }
 
-    if (user.verified) return res.status(400).json({ error: 'Email already verified' });
+    if (user.verified) {
+      console.log(`[Auth][RESEND_VERIFICATION] User already verified: ${user.email} - returning tokens for auto-login`);
+      
+      // Update last active
+      user.lastActive = new Date();
+      user.lastLogin = new Date();
+      await user.save();
+      
+      // Generate tokens for automatic login
+      const accessToken = generateToken(user);
+      const refreshToken = generateRefreshToken(user._id);
+      setRefreshTokenCookie(res, refreshToken);
+      
+      // Return comprehensive account status with tokens for auto-login
+      return res.json({ 
+        success: true,
+        message: 'Email already verified. Account restored.',
+        verified: true,
+        isNewUser: false,
+        _id: user._id,
+        email: user.email,
+        isPro: user.isPro || user.plan === 'pro',
+        isAdmin: user.isAdmin,
+        role: user.role || 'user',
+        adminStatus: user.adminStatus || 'none',
+        plan: user.plan,
+        trialUsed: !!user.trialUsed,
+        trialActive: user.trialActive && user.trialEndsAt && new Date() < user.trialEndsAt,
+        trialEndsAt: user.trialEndsAt,
+        subscriptionStatus: user.subscriptionStatus || 'inactive',
+        subscriptionEndsAt: user.subscriptionEndsAt,
+        accountStatus: user.accountStatus || 'active',
+        devices: user.devices || [],
+        accessToken,
+        refreshToken
+      });
+    }
 
     const verificationToken = crypto.randomBytes(16).toString('hex');
     user.verificationToken = verificationToken;
