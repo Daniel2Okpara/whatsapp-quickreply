@@ -1800,15 +1800,20 @@
 
   // Trial Button Wire
   shadow.getElementById('waqr-start-trial').addEventListener('click', async () => {
-    storageGet(['email', 'jwtToken'], async (res) => {
+    storageGet(['email', 'jwtToken', 'deviceId'], async (res) => {
       const email = res.email;
       const token = res.jwtToken;
+      const deviceId = res.deviceId;
       if (!email) {
         showToast('⚠️ Please activate with your email first.');
         return;
       }
       if (!token) {
         showToast('⚠️ Please log in to start a trial.');
+        return;
+      }
+      if (!deviceId) {
+        showToast('⚠️ Device ID not found. Please reload the extension.');
         return;
       }
       
@@ -1819,7 +1824,8 @@
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
-          }
+          },
+          body: JSON.stringify({ deviceId })
         });
         
         const data = await response.json();

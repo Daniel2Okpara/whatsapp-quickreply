@@ -616,6 +616,23 @@ async function refreshSubscription() {
   }
 }
 
+// Ensure usage is initialized for all users (including old verified users)
+async function ensureUsageInitialized() {
+  const data = await storageGet(['usage']);
+  if (!data.usage) {
+    console.log('[Usage] Initializing usage for user');
+    await storageSet({
+      usage: { 
+        free_aiReply: 0, 
+        free_improve: 0, 
+        pro_aiReply: 0, 
+        pro_improve: 0, 
+        lastReset: new Date().toISOString().split('T')[0] 
+      }
+    });
+  }
+}
+
 // New function to check account status for pricing page
 async function checkAccountStatus(email) {
   try {
@@ -636,9 +653,11 @@ chrome.runtime.onStartup.addListener(async () => {
   // Track install on startup to sync existing installs
   await trackInstall();
   refreshSubscription();
+  ensureUsageInitialized();
 });
 
 // Also track on initial load for existing installs
 trackInstall();
 refreshSubscription();
-setInterval(refreshSubscription, 30000); // Refresh every 30 seconds for faster sync
+ensureUsageInitialized();
+setInterval(refreshSubscription, 10000); // Refresh every 10 seconds for faster sync
