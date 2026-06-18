@@ -1230,3 +1230,84 @@ exports.licenseStatus = async (req, res) => {
   }
 };
 
+exports.verificationStatus = async (req, res) => {
+  try {
+    console.log('[Auth][VERIFICATION_STATUS] Entry - Query keys:', Object.keys(req.query));
+    const { email, deviceId } = req.query;
+    console.log('[Auth][VERIFICATION_STATUS] Email provided:', !!email, 'DeviceId provided:', !!deviceId);
+    
+    if (!email) {
+      console.log('[Auth][VERIFICATION_STATUS] No email provided - returning 400');
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+    console.log('[Auth][VERIFICATION_STATUS] User found:', !!user, 'ID:', user?._id, 'Verified:', user?.verified);
+    
+    if (!user) {
+      console.log('[Auth][VERIFICATION_STATUS] User not found - returning verified: false');
+      return res.json({ 
+        verified: false, 
+        exists: false,
+        message: 'User not found' 
+      });
+    }
+    
+    // Link device if provided
+    if (deviceId) {
+      await linkDeviceToUser(user, deviceId);
+      await user.save();
+    }
+    
+    // If user is verified, return tokens for auto-login
+    if (user.verified) {
+      console.log('[Auth][VERIFICATION_STATUS] User verified - returning tokens for auto-login');
+      
+      // Update last active
+      user.lastActive = new Date();
+      user.lastLogin = new Date();
+      await user.save();
+      
+      // Generate tokens for automatic login
+      const accessToken = generateToken(user);
+      const refreshToken = generateRefreshToken(user._id);
+      setRefreshTokenCookie(res, refreshToken);
+      
+      console.log(`[Auth][VERIFICATION_STATUS] Auto-login for verified user: ${user.email} (ID: ${user._id})`);
+      
+      return res.json({ 
+        verified: true,
+        exists: true,
+        _id: user._id,
+        email: user.email,
+        isPro: user.isPro || user.plan === 'pro',
+        isAdmin: user.isAdmin,
+        role: user.role || 'user',
+        adminStatus: user.adminStatus || 'none',
+        plan: user.plan,
+        trialUsed: !!user.trialUsed,
+        trialActive: user.trialActive && user.trialEndsAt && new Date() < user.trialEndsAt,
+        trialEndsAt: user.trialEndsAt,
+        subscriptionStatus: user.subscriptionStatus || 'inactive',
+        subscriptionEndsAt: user.subscriptionEndsAt,
+        accountStatus: user.accountStatus || 'active',
+        devices: user.devices || [],
+        accessToken,
+        refreshToken
+      });
+    }
+    
+    console.log('[Auth][VERIFICATION_STATUS] User not verified - returning verified: false');
+    return res.json({ 
+      verified: false,
+      exists: true,
+      email: user.email,
+      message: 'Email not verified yet'
+    });
+  } catch (error) {
+    console.error('[Auth][VERIFICATION_STATUS] Error:', error);
+    return res.status(500).json({ error: 'Failed to check verification status' });
+  }
+};
+
