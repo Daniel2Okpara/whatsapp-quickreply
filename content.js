@@ -1860,7 +1860,9 @@
     const lastMsg = history[history.length - 1];
     let isFollowUp = false;
     
-    if (lastMsg.role === 'assistant') {
+    // Follow-up if the last message was from the other person (user role)
+    // This means we should continue the conversation from their last message
+    if (lastMsg.role === 'user') {
       isFollowUp = true;
     }
 

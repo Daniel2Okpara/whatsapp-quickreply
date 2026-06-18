@@ -216,6 +216,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log('[AUDIT][BACKGROUND][SET_STORAGE] Storage saved successfully');
       try { console.log('[Background] SET_STORAGE keys=', Object.keys(request.obj)); } catch(e){}
       broadcastRuntimeMessage({ type: 'STORAGE_UPDATED', keys: Object.keys(request.obj) });
+      
+      // Sync usage to backend if it changed
+      if (request.obj.usage) {
+        syncUsageToBackend();
+      }
+      
       safeSendResponse(sendResponse, { success: true });
     });
     return true;
@@ -593,7 +599,14 @@ async function refreshSubscription() {
           subscriptionStatus: body.subscriptionStatus || 'inactive',
           trialEndsAt: body.trialEndsAt || null,
           trialUsed: body.trialUsed || false,
-          verified: !!body.verified
+          verified: !!body.verified,
+          usage: body.usage || {
+            free_aiReply: 0,
+            free_improve: 0,
+            pro_aiReply: 0,
+            pro_improve: 0,
+            lastReset: new Date().toISOString().split('T')[0]
+          }
         });
         
         console.log('[SSE][REFRESH] Subscription data updated successfully - plan:', body.plan, 'isPro:', body.isPro);
@@ -646,9 +659,28 @@ async function refreshSubscription() {
 
 // Ensure usage is initialized for all users (including old verified users)
 async function ensureUsageInitialized() {
-  const data = await storageGet(['usage']);
+  const data = await storageGet(['usage', 'jwtToken']);
+  
+  // If we have a token, try to fetch usage from backend first
+  if (data.jwtToken) {
+    try {
+      const resp = await authenticatedFetch(`${BACKEND_URL}/auth/profile`);
+      if (resp.ok) {
+        const body = await resp.json();
+        if (body.usage) {
+          console.log('[Usage] Fetched usage from backend:', body.usage);
+          await storageSet({ usage: body.usage });
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('[Usage] Failed to fetch usage from backend:', e);
+    }
+  }
+  
+  // Fallback to local initialization
   if (!data.usage) {
-    console.log('[Usage] Initializing usage for user');
+    console.log('[Usage] Initializing usage locally');
     await storageSet({
       usage: { 
         free_aiReply: 0, 
@@ -658,6 +690,28 @@ async function ensureUsageInitialized() {
         lastReset: new Date().toISOString().split('T')[0] 
       }
     });
+  }
+}
+
+// Sync usage to backend
+async function syncUsageToBackend() {
+  try {
+    const data = await storageGet(['usage', 'jwtToken']);
+    if (!data.jwtToken || !data.usage) {
+      return;
+    }
+    
+    const resp = await authenticatedFetch(`${BACKEND_URL}/auth/sync-usage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usage: data.usage })
+    });
+    
+    if (resp.ok) {
+      console.log('[Usage] Successfully synced usage to backend');
+    }
+  } catch (e) {
+    console.warn('[Usage] Failed to sync usage to backend:', e);
   }
 }
 
@@ -689,3 +743,10 @@ trackInstall();
 refreshSubscription();
 ensureUsageInitialized();
 refreshTimer = setInterval(refreshSubscription, refreshInterval); // Refresh with backoff support
+
+// Listen for storage changes to sync usage
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.usage) {
+    syncUsageToBackend();
+  }
+});
