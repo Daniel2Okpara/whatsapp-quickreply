@@ -28,7 +28,8 @@ async function getOrCreateDeviceId() {
 function broadcastRuntimeMessage(message) {
   chrome.runtime.sendMessage(message, () => {
     if (chrome.runtime.lastError) {
-      try { console.warn('[Background] broadcastRuntimeMessage no receiver:', chrome.runtime.lastError.message); } catch (e) {}
+      // Silently ignore - this is expected when WhatsApp Web is not open
+      // No need to log since this happens every 10s during subscription refresh
     }
   });
 }
