@@ -567,6 +567,11 @@ async function connectSSE() {
   }
 }
 
+// Refresh interval with exponential backoff for rate limiting
+let refreshInterval = 10000;
+let backoffCount = 0;
+let refreshTimer = null;
+
 async function refreshSubscription() {
   try {
     const data = await storageGet(['jwtToken', 'deviceId', 'email']);
@@ -593,6 +598,17 @@ async function refreshSubscription() {
         
         console.log('[SSE][REFRESH] Subscription data updated successfully - plan:', body.plan, 'isPro:', body.isPro);
         
+        // Reset backoff on success
+        if (backoffCount > 0) {
+          backoffCount = 0;
+          refreshInterval = 10000;
+          if (refreshTimer) {
+            clearInterval(refreshTimer);
+            refreshTimer = setInterval(refreshSubscription, refreshInterval);
+          }
+          console.log('[SSE][REFRESH] Reset refresh interval to 10s after successful request');
+        }
+        
         // Broadcast to all extension contexts about profile update
         broadcastRuntimeMessage({
           type: 'PROFILE_UPDATED',
@@ -608,6 +624,17 @@ async function refreshSubscription() {
         } else if (body.email && sseConnection) {
           console.log('[SSE][REFRESH] SSE connection already exists');
         }
+      }
+    } else if (resp.status === 429) {
+      // Rate limited - increase backoff
+      backoffCount++;
+      refreshInterval = Math.min(10000 * Math.pow(2, backoffCount), 60000);
+      console.warn(`[SSE][REFRESH] Rate limited (429). Increasing backoff to ${refreshInterval}ms (attempt ${backoffCount})`);
+      
+      // Restart interval with new backoff
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = setInterval(refreshSubscription, refreshInterval);
       }
     } else {
       console.error('[SSE][REFRESH] Failed to fetch profile:', resp.status);
@@ -661,4 +688,4 @@ chrome.runtime.onStartup.addListener(async () => {
 trackInstall();
 refreshSubscription();
 ensureUsageInitialized();
-setInterval(refreshSubscription, 10000); // Refresh every 10 seconds for faster sync
+refreshTimer = setInterval(refreshSubscription, refreshInterval); // Refresh with backoff support
