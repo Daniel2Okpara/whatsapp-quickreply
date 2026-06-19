@@ -113,16 +113,32 @@ const executeWebhookLogic = async (body, log) => {
                     alertName.includes('subscription_payment_succeeded') ||
                     alertName.includes('transaction.completed');
 
+  // Check if plan was manually changed by admin recently (within last 24 hours)
+  // If so, skip webhook processing to prevent override
+  const manualChangeThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
+  if (user.planChangedManuallyAt && user.planChangedBy === 'admin' && user.planChangedManuallyAt > manualChangeThreshold) {
+    console.log(`[Paddle] Skipping webhook for ${user.email} - plan was manually changed by admin less than 24 hours ago`);
+    log.status = 'skipped (manual override)';
+    log.isProcessed = true;
+    log.processedAt = new Date();
+    await log.save();
+    return;
+  }
+
   if (isActivation || isPayment) {
     user.plan = 'pro';
     user.subscriptionStatus = 'active';
     user.isPro = true;
+    user.planChangedManuallyAt = null; // Clear manual flag on webhook activation
+    user.planChangedBy = 'webhook';
   }
 
   if (isCancellation) {
     user.plan = 'free';
     user.subscriptionStatus = 'cancelled';
     user.isPro = false;
+    user.planChangedManuallyAt = null; // Clear manual flag on webhook cancellation
+    user.planChangedBy = 'webhook';
   }
 
   await user.save();

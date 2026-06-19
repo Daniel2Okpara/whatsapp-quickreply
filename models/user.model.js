@@ -39,6 +39,10 @@ const userSchema = new mongoose.Schema({
   subscriptionCancelledAt: { type: Date, default: null },
   subscriptionPlan: { type: String, default: null }, // 'monthly', 'yearly', etc.
   
+  // Manual override to prevent webhooks from overriding admin changes
+  planChangedManuallyAt: { type: Date, default: null },
+  planChangedBy: { type: String, enum: ['admin', 'webhook', 'system'], default: 'system' },
+  
   // Payment Provider Integration
   paddleCustomerId: { type: String, default: null },
   paddleSubscriptionId: { type: String, default: null },
