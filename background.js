@@ -127,9 +127,15 @@ async function trackInstall() {
   }
 }
 
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
   // V11.0: Wake up the server on install/startup
   fetch(`${BACKEND_URL}/health`).catch(() => {});
+
+  // Clear all user data on fresh install (not update)
+  if (details.reason === 'install') {
+    console.log('[Install] Fresh install detected, clearing all user data');
+    await chrome.storage.local.clear();
+  }
 
   // Clear any stored position data to prevent off-screen issues
   chrome.storage.local.remove(['fabPosition', 'panelPosition']);

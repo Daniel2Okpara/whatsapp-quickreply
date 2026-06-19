@@ -1316,14 +1316,25 @@
            styleProfile = captureStyleProfile();
         }
 
+        // Detect tone and language from chat history
+        const history = getLastMessages(10);
+        const detectedToneAndLanguage = detectToneAndLanguage(history);
+        
+        // Use detected tone/language if not manually set, otherwise respect user settings
+        const finalTone = settings.tone || detectedToneAndLanguage.tone;
+        const finalLanguage = detectedToneAndLanguage.language;
+
         chrome.runtime.sendMessage({ 
            type: 'AI_IMPROVE', 
            payload: {
               text: originalText,
-              messages: getLastMessages(10),
+              messages: history,
               timeContext: new Date().toLocaleString(),
-              tone: settings.tone || 'friendly',
-              styleExamples: styleProfile ? styleProfile.join(' | ') : ''
+              tone: finalTone,
+              language: finalLanguage,
+              styleExamples: styleProfile ? styleProfile.join(' | ') : '',
+              detectedTone: detectedToneAndLanguage.tone,
+              detectedLanguage: detectedToneAndLanguage.language
            }
         }, (response) => {
         clearTimeout(failsafe);
@@ -1726,6 +1737,71 @@
     };
   }
 
+  function detectToneAndLanguage(history) {
+    if (!history || history.length === 0) return { tone: 'friendly', language: 'English' };
+
+    // Analyze the other person's messages (user role) to detect their tone and language
+    const userMessages = history.filter(msg => msg.role === 'user').map(msg => msg.content);
+    
+    if (userMessages.length === 0) return { tone: 'friendly', language: 'English' };
+
+    const allText = userMessages.join(' ');
+    
+    // Detect language (simple heuristic)
+    const languagePatterns = {
+      'Spanish': /[ñáéíóúü¿¡]/i,
+      'French': /[àâäéèêëïîôùûüÿçœæ]/i,
+      'German': /[äöüß]/i,
+      'Portuguese': /[ãõáàâéêíóôú]/i,
+      'Italian': /[àèéìòù]/i,
+      'Dutch': /[äëïöü]/i
+    };
+
+    let detectedLanguage = 'English';
+    for (const [lang, pattern] of Object.entries(languagePatterns)) {
+      if (pattern.test(allText)) {
+        detectedLanguage = lang;
+        break;
+      }
+    }
+
+    // Detect tone from the other person's messages
+    const toneIndicators = {
+      formal: ['please', 'thank you', 'regards', 'sincerely', 'would you', 'could you', 'appreciate'],
+      casual: ['lol', 'haha', 'omg', 'btw', 'tbh', 'imo', 'wtf', 'yeah', 'nah', 'gonna', 'wanna'],
+      funny: ['lol', 'lmao', 'rofl', 'haha', 'joke', 'funny', 'hilarious', '😂', '😆', '🤣'],
+      serious: ['important', 'urgent', 'serious', 'matter', 'concern', 'issue', 'problem'],
+      friendly: ['hey', 'hi', 'hello', 'thanks', 'good', 'great', 'awesome', 'love', 'happy']
+    };
+
+    const textLower = allText.toLowerCase();
+    const toneScores = {};
+
+    for (const [tone, indicators] of Object.entries(toneIndicators)) {
+      const score = indicators.reduce((acc, indicator) => {
+        return acc + (textLower.includes(indicator) ? 1 : 0);
+      }, 0);
+      toneScores[tone] = score;
+    }
+
+    // Find the tone with the highest score
+    let detectedTone = 'friendly';
+    let maxScore = 0;
+    for (const [tone, score] of Object.entries(toneScores)) {
+      if (score > maxScore) {
+        maxScore = score;
+        detectedTone = tone;
+      }
+    }
+
+    // If no strong indicators detected, default to friendly
+    if (maxScore === 0) {
+      detectedTone = 'friendly';
+    }
+
+    return { tone: detectedTone, language: detectedLanguage };
+  }
+
   // ============================================================================
   // 6. PLAN & USAGE SYNC
   // ============================================================================
@@ -1891,16 +1967,26 @@
         styleProfile = captureStyleProfile();
       }
 
+      // Detect tone and language from chat history
+      const detectedToneAndLanguage = detectToneAndLanguage(history);
+      
+      // Use detected tone/language if not manually set, otherwise respect user settings
+      const finalTone = settings.tone || detectedToneAndLanguage.tone;
+      const finalLanguage = detectedToneAndLanguage.language;
+
       chrome.runtime.sendMessage({
         type: 'AI_GENERATE',
         history: {
           messages: history,
           mode: isFollowUp ? 'follow_up' : 'reply',
           timestampContext: new Date().toLocaleString(),
-          tone: settings.tone || 'friendly',
+          tone: finalTone,
+          language: finalLanguage,
           replyStyle: settings.replyStyle || 'balanced',
           emojiUsage: settings.emojiUsage || 'natural',
-          styleProfile: styleProfile
+          styleProfile: styleProfile,
+          detectedTone: detectedToneAndLanguage.tone,
+          detectedLanguage: detectedToneAndLanguage.language
         }
       }, (response) => {
         genBtn.innerHTML = '✨ Generate AI Reply';
