@@ -603,6 +603,24 @@ exports.getProfile = async (req, res) => {
     const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
     
+    // Data consistency check: Fix plan/isPro mismatch
+    let needsSave = false;
+    if (user.isPro && user.plan !== 'pro') {
+      console.log(`[Profile] Data inconsistency detected for ${user.email}: isPro=true but plan=${user.plan}. Fixing...`);
+      user.plan = 'pro';
+      user.subscriptionStatus = 'active';
+      needsSave = true;
+    } else if (!user.isPro && user.plan === 'pro') {
+      console.log(`[Profile] Data inconsistency detected for ${user.email}: plan=pro but isPro=false. Fixing...`);
+      user.isPro = true;
+      needsSave = true;
+    }
+    
+    if (needsSave) {
+      await user.save();
+      console.log(`[Profile] Data consistency fixed for ${user.email}`);
+    }
+    
     // Ensure response includes all fields needed by extension for sync
     return res.json({
       _id: user._id,
