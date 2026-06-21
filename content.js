@@ -1930,14 +1930,16 @@
       const isProOrTrial = plan === 'pro' || plan === 'trial';
       
       // FEATURE LOCK: Block Auto Follow-Up for free users
-      if (isFollowUp && !isProOrTrial) {
+      // Only block if user explicitly enables follow-up mode in settings
+      if (isFollowUp && !isProOrTrial && settings.autoFollowUp === true) {
         genBtn.innerHTML = '✨ Generate AI Reply';
         genBtn.disabled = false;
         showUpgradeModal('🔒 Auto Follow-Up is a Pro feature. Upgrade to unlock unlimited follow-ups!');
         return;
       }
 
-      if (isFollowUp) showToast('⌛ Generating a smart follow-up...');
+      // For regular replies (not explicit follow-ups), allow free users to use it
+      if (isFollowUp && settings.autoFollowUp === true) showToast('⌛ Generating a smart follow-up...');
 
       // FEATURE LOCK: Disable Style Learning for free users
       let styleProfile = null;
