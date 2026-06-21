@@ -616,6 +616,26 @@ exports.getProfile = async (req, res) => {
       needsSave = true;
     }
     
+    // Check trial expiration and update plan accordingly
+    if (user.trialEndsAt && new Date() > new Date(user.trialEndsAt)) {
+      console.log(`[Profile] Trial expired for ${user.email} on ${user.trialEndsAt}`);
+      
+      // If trial expired and subscription is not active, revert to free
+      if (user.plan === 'trial' && user.subscriptionStatus !== 'active') {
+        console.log(`[Profile] Reverting ${user.email} to free plan after trial expiration`);
+        user.plan = 'free';
+        user.isPro = false;
+        needsSave = true;
+      }
+      // If subscription is active, keep pro (user paid after trial)
+      else if (user.subscriptionStatus === 'active') {
+        console.log(`[Profile] Keeping ${user.email} on pro plan (subscription active after trial)`);
+        user.plan = 'pro';
+        user.isPro = true;
+        needsSave = true;
+      }
+    }
+    
     if (needsSave) {
       await user.save();
       console.log(`[Profile] Data consistency fixed for ${user.email}`);
@@ -629,12 +649,21 @@ exports.getProfile = async (req, res) => {
       isPro: user.isPro || user.plan === 'pro',
       subscriptionStatus: user.subscriptionStatus,
       trialEndsAt: user.trialEndsAt,
+      trialUsed: user.trialUsed || false,
       verified: user.verified,
       isAdmin: user.isAdmin,
       role: user.role || 'user',
       creditsUsed: user.creditsUsed || 0,
       dailyUsage: user.dailyUsage || 0,
       createdAt: user.createdAt,
+      // Usage counts (persisted on backend)
+      usage: user.usage || {
+        free_aiReply: 0,
+        free_improve: 0,
+        pro_aiReply: 0,
+        pro_improve: 0,
+        lastReset: new Date().toISOString().split('T')[0]
+      },
       // Feature flags
       features: user.features || {
         styleLearning: true,
