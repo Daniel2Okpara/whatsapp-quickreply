@@ -361,12 +361,14 @@ async function handleFeatureRequest(feature, request, sendResponse) {
 function resetUsageIfNeeded(data) {
   const today = new Date().toISOString().split('T')[0];
   if (!data.usage) {
-    data.usage = { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, lastReset: today };
+    data.usage = { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, trial_aiReply: 0, trial_improve: 0, lastReset: today };
   } else if (data.usage.lastReset !== today) {
     data.usage.free_aiReply = 0;
     data.usage.free_improve = 0;
     data.usage.pro_aiReply = 0;
     data.usage.pro_improve = 0;
+    data.usage.trial_aiReply = 0;
+    data.usage.trial_improve = 0;
     
     // Legacy fallback resets
     data.usage.aiReply = 0;
@@ -675,6 +677,8 @@ async function refreshSubscription() {
               free_improve: 0,
               pro_aiReply: 0,
               pro_improve: 0,
+              trial_aiReply: 0,
+              trial_improve: 0,
               lastReset: new Date().toISOString().split('T')[0]
             }
           });
