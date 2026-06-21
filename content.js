@@ -1824,10 +1824,12 @@
     shadow.getElementById('waqr-trial-badge').style.display = isTrial ? 'inline-block' : 'none';
     shadow.getElementById('waqr-upgrade-link').style.display = isPro ? 'none' : 'inline-block';
 
-    // Trial Button Logic
+    // Trial Button Logic - hide if trial already used
     const trialBtn = shadow.getElementById('waqr-start-trial');
     if (trialBtn) {
-      trialBtn.style.display = (isFree && !state.trialUsed) ? 'block' : 'none';
+      const canShowTrial = isFree && !state.trialUsed;
+      trialBtn.style.display = canShowTrial ? 'block' : 'none';
+      console.log('[UI] Trial button visibility check - isFree:', isFree, 'trialUsed:', state.trialUsed, 'showing:', canShowTrial);
     }
 
     // Theme
@@ -1884,13 +1886,35 @@
         showToast('⚠️ Please activate with your email first.');
         return;
       }
-      if (!token) {
-        showToast('⚠️ Please log in to start a trial.');
-        return;
-      }
       if (!deviceId) {
         showToast('⚠️ Device ID not found. Please reload the extension.');
         return;
+      }
+      
+      // If no token, try to get one by registering
+      if (!token) {
+        showToast('⏳ Authenticating...');
+        try {
+          const registerResp = await fetch(`${BACKEND_URL}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, deviceId })
+          });
+          const registerData = await registerResp.json();
+          if (registerResp.ok && registerData.accessToken) {
+            // Store the new token
+            chrome.storage.local.set({ jwtToken: registerData.accessToken }, () => {
+              console.log('[Trial] Stored new JWT token after registration');
+            });
+          } else {
+            showToast(`❌ ${registerData.error || 'Authentication failed'}`);
+            return;
+          }
+        } catch (error) {
+          console.error('Registration error:', error);
+          showToast('❌ Failed to authenticate. Please try again.');
+          return;
+        }
       }
       
       try {
@@ -1899,7 +1923,7 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${token || res.jwtToken}`
           },
           body: JSON.stringify({ deviceId })
         });
