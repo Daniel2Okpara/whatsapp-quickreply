@@ -135,6 +135,10 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     console.log('[Install] Fresh install detected, clearing all user data');
     await chrome.storage.local.clear();
+  } else if (details.reason === 'update') {
+    // On update (reload), also clear user data to prevent stale data issues
+    console.log('[Install] Update detected, clearing user data to prevent stale data');
+    await chrome.storage.local.clear();
   }
 
   // Clear any stored position data to prevent off-screen issues
@@ -164,6 +168,18 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
   // Track Chrome Store install
   await trackInstall();
+});
+
+// Also clear user data on startup to prevent stale data from previous sessions
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('[Startup] Checking for stale user data from previous sessions');
+  const data = await storageGet(null);
+  if (data && data.email) {
+    console.log('[Startup] Found email in storage:', data.email);
+    // Clear JWT tokens to force re-authentication with current email
+    await chrome.storage.local.remove(['jwtToken', 'refreshToken', 'accessToken', 'token']);
+    console.log('[Startup] Cleared JWT tokens to force re-authentication');
+  }
 });
 
 // Periodically track install to sync data
@@ -268,6 +284,10 @@ async function handleRegisterOrLogin(request, sendResponse) {
     const { email, deviceId } = request;
     const actualDeviceId = deviceId || await getOrCreateDeviceId();
     
+    // Clear old JWT tokens to prevent using old email's tokens
+    console.log('[Register] Clearing old JWT tokens before registering new email:', email);
+    await chrome.storage.local.remove(['jwtToken', 'refreshToken', 'accessToken', 'token']);
+    
     const resp = await fetch(`${BACKEND_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -359,7 +379,7 @@ function resetUsageIfNeeded(data) {
 }
 
 function canUseFeature(data, feature) {
-  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0 };
+  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, trial_aiReply: 0, trial_improve: 0 };
   
   // Pro limits: 200 combined actions per day
   if (data.plan === 'pro') {
@@ -368,15 +388,15 @@ function canUseFeature(data, feature) {
     return true;
   }
 
-  // Trial logic: 100/day
+  // Trial logic: 200/day (same as pro)
   if (data.plan === 'trial') {
     const trialEnd = data.trialEndsAt || data.trialEnd;
     if (trialEnd && new Date() > new Date(trialEnd)) {
       storageSet({ plan: 'free' });
       return false;
     }
-    const totalTrialActions = (usage.trial_aiReply || usage.free_aiReply || 0) + (usage.trial_improve || usage.free_improve || 0);
-    if (totalTrialActions >= 100) return false;
+    const totalTrialActions = (usage.trial_aiReply || 0) + (usage.trial_improve || 0);
+    if (totalTrialActions >= 200) return false;
     return true;
   }
 
@@ -392,9 +412,17 @@ function canUseFeature(data, feature) {
 
 async function incrementUsage(feature) {
   const data = await storageGet(['usage', 'plan']);
-  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, lastReset: '' };
+  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, trial_aiReply: 0, trial_improve: 0, lastReset: '' };
   
-  const planPrefix = data.plan === 'pro' ? 'pro_' : 'free_';
+  let planPrefix;
+  if (data.plan === 'pro') {
+    planPrefix = 'pro_';
+  } else if (data.plan === 'trial') {
+    planPrefix = 'trial_';
+  } else {
+    planPrefix = 'free_';
+  }
+  
   const planKey = `${planPrefix}${feature}`;
 
   if (usage[planKey] !== undefined) usage[planKey]++;
@@ -515,13 +543,35 @@ async function connectSSE() {
         const update = JSON.parse(event.data);
         console.log('[SSE] Subscription update received:', update);
         
-        // Update local storage with new subscription state
-        storageSet({
-          plan: update.plan || 'free',
-          isPro: update.isPro || false,
-          subscriptionStatus: update.subscriptionStatus || 'inactive',
-          trialEndsAt: update.trialEndsAt || null,
-          subscriptionId: update.subscriptionId || null
+        // Get current stored email to prevent overwriting with wrong email
+        storageGet(['email'], (data) => {
+          const storedEmail = data.email;
+          const updateEmail = update.email;
+          
+          console.log('[SSE] Stored email:', storedEmail, 'Update email:', updateEmail);
+          
+          // Only update if emails match, or if no email is stored
+          if (!storedEmail || storedEmail === updateEmail) {
+            // Update local storage with new subscription state
+            storageSet({
+              email: update.email,
+              plan: update.plan || 'free',
+              isPro: update.isPro || false,
+              subscriptionStatus: update.subscriptionStatus || 'inactive',
+              trialEndsAt: update.trialEndsAt || null,
+              subscriptionId: update.subscriptionId || null
+            });
+          } else {
+            console.warn('[SSE] Email mismatch! Stored:', storedEmail, 'Update:', updateEmail, '- Skipping update to prevent overwrite');
+            // Only update plan-related fields, not email
+            storageSet({
+              plan: update.plan || 'free',
+              isPro: update.isPro || false,
+              subscriptionStatus: update.subscriptionStatus || 'inactive',
+              trialEndsAt: update.trialEndsAt || null,
+              subscriptionId: update.subscriptionId || null
+            });
+          }
         });
 
         // Broadcast to all extension contexts
@@ -592,28 +642,43 @@ async function refreshSubscription() {
       return;
     }
 
-    console.log('[SSE][REFRESH] Refreshing subscription data');
+    console.log('[SSE][REFRESH] Refreshing subscription data for email:', data.email);
     const resp = await authenticatedFetch(`${BACKEND_URL}/auth/profile`);
     if (resp.ok) {
       const body = await resp.json();
       if (body) {
-        await storageSet({ 
-          email: body.email,
-          userId: body._id,
-          plan: body.plan || 'free', 
-          isPro: !!body.isPro,
-          subscriptionStatus: body.subscriptionStatus || 'inactive',
-          trialEndsAt: body.trialEndsAt || null,
-          trialUsed: body.trialUsed || false,
-          verified: !!body.verified,
-          usage: body.usage || {
-            free_aiReply: 0,
-            free_improve: 0,
-            pro_aiReply: 0,
-            pro_improve: 0,
-            lastReset: new Date().toISOString().split('T')[0]
-          }
-        });
+        // Only update email if it matches the stored email (prevent overwriting with old email)
+        const storedEmail = data.email;
+        const profileEmail = body.email;
+        
+        console.log('[SSE][REFRESH] Stored email:', storedEmail, 'Profile email:', profileEmail);
+        
+        if (storedEmail && storedEmail !== profileEmail) {
+          console.warn('[SSE][REFRESH] Email mismatch! Stored:', storedEmail, 'Profile:', profileEmail, '- Skipping all updates to prevent data corruption');
+          // Clear JWT tokens to force re-authentication with correct email
+          console.log('[SSE][REFRESH] Clearing JWT tokens due to email mismatch');
+          await chrome.storage.local.remove(['jwtToken', 'refreshToken', 'accessToken', 'token']);
+          return;
+        } else {
+          // Emails match, update everything
+          await storageSet({ 
+            email: body.email,
+            userId: body._id,
+            plan: body.plan || 'free', 
+            isPro: !!body.isPro,
+            subscriptionStatus: body.subscriptionStatus || 'inactive',
+            trialEndsAt: body.trialEndsAt || null,
+            trialUsed: body.trialUsed || false,
+            verified: !!body.verified,
+            usage: body.usage || {
+              free_aiReply: 0,
+              free_improve: 0,
+              pro_aiReply: 0,
+              pro_improve: 0,
+              lastReset: new Date().toISOString().split('T')[0]
+            }
+          });
+        }
         
         console.log('[SSE][REFRESH] Subscription data updated successfully - plan:', body.plan, 'isPro:', body.isPro);
         
