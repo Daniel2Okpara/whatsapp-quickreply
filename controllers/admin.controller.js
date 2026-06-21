@@ -17,6 +17,10 @@ exports.cancelSubscription = async (req, res) => {
     user.plan = 'free';
     user.subscriptionStatus = 'cancelled';
     user.subscriptionId = null;
+    user.isPro = false;
+    // Mark as manually changed by admin to prevent webhook override
+    user.planChangedManuallyAt = new Date();
+    user.planChangedBy = 'admin';
     await user.save();
 
     console.log(`[Admin] Subscription cancelled: ${user.email} (${oldPlan} -> free)`);
@@ -146,11 +150,21 @@ exports.simulateWebhook = async (req, res) => {
 
     const oldPlan = user.plan;
 
+    // Check if plan was manually changed by admin recently (within last 24 hours)
+    // If so, skip webhook simulation to prevent override
+    const manualChangeThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
+    if (user.planChangedManuallyAt && user.planChangedBy === 'admin' && user.planChangedManuallyAt > manualChangeThreshold) {
+      console.log(`[Admin] Skipping webhook simulation for ${user.email} - plan was manually changed by admin less than 24 hours ago`);
+      return res.json({ success: true, user, skipped: true, reason: 'manual_override' });
+    }
+
     if (alert_name === 'subscription_created' || alert_name === 'upgrade') {
       user.plan = 'pro';
       user.subscriptionStatus = 'active';
       user.subscriptionId = subscription_id || `manual_${Date.now()}`;
       user.isPro = true;
+      user.planChangedManuallyAt = null;
+      user.planChangedBy = 'webhook';
     } else if (alert_name === 'subscription_activated' || alert_name === 'trial') {
       user.plan = 'trial';
       user.trialUsed = true;
@@ -161,11 +175,15 @@ exports.simulateWebhook = async (req, res) => {
       trialEnds.setDate(trialEnds.getDate() + 3);
       user.trialEndsAt = trialEnds;
       user.trialEnd = trialEnds;
+      user.planChangedManuallyAt = null;
+      user.planChangedBy = 'webhook';
     } else if (alert_name === 'subscription_cancelled' || alert_name === 'cancel' || alert_name === 'downgrade') {
       user.plan = 'free';
       user.subscriptionStatus = 'cancelled';
       user.subscriptionId = null;
       user.isPro = false;
+      user.planChangedManuallyAt = new Date();
+      user.planChangedBy = 'admin';
     }
 
     await user.save();
