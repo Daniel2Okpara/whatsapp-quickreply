@@ -284,6 +284,10 @@ async function handleRegisterOrLogin(request, sendResponse) {
     const { email, deviceId } = request;
     const actualDeviceId = deviceId || await getOrCreateDeviceId();
     
+    // Clear old JWT tokens to prevent using old email's tokens
+    console.log('[Register] Clearing old JWT tokens before registering new email:', email);
+    await chrome.storage.local.remove(['jwtToken', 'refreshToken', 'accessToken', 'token']);
+    
     const resp = await fetch(`${BACKEND_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -642,24 +646,11 @@ async function refreshSubscription() {
         console.log('[SSE][REFRESH] Stored email:', storedEmail, 'Profile email:', profileEmail);
         
         if (storedEmail && storedEmail !== profileEmail) {
-          console.warn('[SSE][REFRESH] Email mismatch! Stored:', storedEmail, 'Profile:', profileEmail, '- Skipping email update to prevent overwrite');
-          // Update everything except email
-          await storageSet({ 
-            userId: body._id,
-            plan: body.plan || 'free', 
-            isPro: !!body.isPro,
-            subscriptionStatus: body.subscriptionStatus || 'inactive',
-            trialEndsAt: body.trialEndsAt || null,
-            trialUsed: body.trialUsed || false,
-            verified: !!body.verified,
-            usage: body.usage || {
-              free_aiReply: 0,
-              free_improve: 0,
-              pro_aiReply: 0,
-              pro_improve: 0,
-              lastReset: new Date().toISOString().split('T')[0]
-            }
-          });
+          console.warn('[SSE][REFRESH] Email mismatch! Stored:', storedEmail, 'Profile:', profileEmail, '- Skipping all updates to prevent data corruption');
+          // Clear JWT tokens to force re-authentication with correct email
+          console.log('[SSE][REFRESH] Clearing JWT tokens due to email mismatch');
+          await chrome.storage.local.remove(['jwtToken', 'refreshToken', 'accessToken', 'token']);
+          return;
         } else {
           // Emails match, update everything
           await storageSet({ 
