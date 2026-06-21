@@ -52,6 +52,15 @@ const userSchema = new mongoose.Schema({
   creditsUsed: { type: Number, default: 0 },
   dailyUsage: { type: Number, default: 0 },
   lastUsageReset: { type: Date, default: Date.now },
+  usage: {
+    free_aiReply: { type: Number, default: 0 },
+    free_improve: { type: Number, default: 0 },
+    pro_aiReply: { type: Number, default: 0 },
+    pro_improve: { type: Number, default: 0 },
+    trial_aiReply: { type: Number, default: 0 },
+    trial_improve: { type: Number, default: 0 },
+    lastReset: { type: String, default: null }
+  },
   
   // Feature Flags
   features: {
