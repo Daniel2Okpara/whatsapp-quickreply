@@ -1841,13 +1841,22 @@
       shadow.getElementById('waqr-usage-templates').style.display = 'block';
       shadow.getElementById('waqr-usage-ai').style.display = 'block';
       
-      const aiCount = (usage?.free_aiReply || 0) + (usage?.aiReply && !usage?.pro_aiReply ? usage.aiReply : 0);
-      const improveCount = (usage?.free_improve || 0) + (usage?.improve && !usage?.pro_improve ? usage.improve : 0);
+      // Use trial-specific counters for trial users, free counters for free users
+      let aiCount, improveCount, maxCount;
+      if (isTrial) {
+        aiCount = (usage?.trial_aiReply || 0);
+        improveCount = (usage?.trial_improve || 0);
+        maxCount = 200; // Trial limit same as pro
+      } else {
+        aiCount = (usage?.free_aiReply || 0) + (usage?.aiReply && !usage?.pro_aiReply ? usage.aiReply : 0);
+        improveCount = (usage?.free_improve || 0) + (usage?.improve && !usage?.pro_improve ? usage.improve : 0);
+        maxCount = 10; // Free limit
+      }
 
       shadow.getElementById('waqr-usage-ai-count').textContent = aiCount;
-      shadow.getElementById('waqr-usage-ai-fill').style.width = (aiCount * 10) + '%';
+      shadow.getElementById('waqr-usage-ai-fill').style.width = (aiCount / maxCount * 100) + '%';
       shadow.getElementById('waqr-usage-improve-count').textContent = improveCount;
-      shadow.getElementById('waqr-usage-improve-fill').style.width = (improveCount * 10) + '%';
+      shadow.getElementById('waqr-usage-improve-fill').style.width = (improveCount / maxCount * 100) + '%';
 
       if (isTrial && trialEnd) {
         const left = new Date(trialEnd) - new Date();
@@ -1876,70 +1885,15 @@
     modalOverlay.classList.remove('active');
   });
 
-  // Trial Button Wire
+  // Trial Button Wire - redirect to website pricing page
   shadow.getElementById('waqr-start-trial').addEventListener('click', async () => {
-    storageGet(['email', 'jwtToken', 'deviceId'], async (res) => {
+    storageGet(['email'], (res) => {
       const email = res.email;
-      const token = res.jwtToken;
-      const deviceId = res.deviceId;
-      if (!email) {
-        showToast('⚠️ Please activate with your email first.');
-        return;
-      }
-      if (!deviceId) {
-        showToast('⚠️ Device ID not found. Please reload the extension.');
-        return;
-      }
-      
-      // If no token, try to get one by registering
-      if (!token) {
-        showToast('⏳ Authenticating...');
-        try {
-          const registerResp = await fetch(`${BACKEND_URL}/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, deviceId })
-          });
-          const registerData = await registerResp.json();
-          if (registerResp.ok && registerData.accessToken) {
-            // Store the new token
-            chrome.storage.local.set({ jwtToken: registerData.accessToken }, () => {
-              console.log('[Trial] Stored new JWT token after registration');
-            });
-          } else {
-            showToast(`❌ ${registerData.error || 'Authentication failed'}`);
-            return;
-          }
-        } catch (error) {
-          console.error('Registration error:', error);
-          showToast('❌ Failed to authenticate. Please try again.');
-          return;
-        }
-      }
-      
-      try {
-        showToast('⏳ Starting trial...');
-        const response = await fetch(`${BACKEND_URL}/auth/start-trial`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token || res.jwtToken}`
-          },
-          body: JSON.stringify({ deviceId })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          showToast('✅ Trial started successfully!');
-          syncPlanState(); // Refresh plan state
-        } else {
-          showToast(`❌ ${data.error || 'Failed to start trial'}`);
-        }
-      } catch (error) {
-        console.error('Trial start error:', error);
-        showToast('❌ Failed to start trial. Please try again.');
-      }
+      // Redirect to website pricing page with email parameter
+      const url = email 
+        ? `https://www.wa-quick-reply.com/#pricing?email=${encodeURIComponent(email)}&trial=true`
+        : 'https://www.wa-quick-reply.com/#pricing?trial=true';
+      window.open(url, '_blank');
     });
   });
 
@@ -2537,10 +2491,35 @@
 
         sendButton.disabled = true; sendButton.textContent = 'Sending...'; updateStatus('');
         try {
-          const resp = await fetch(`${BACKEND_URL}/auth/resend-verification`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: emailValue }) });
+          const resp = await fetch(`${BACKEND_URL}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: emailValue, deviceId: await new Promise(r => chrome.storage.local.get(['deviceId'], d => r(d.deviceId))) }) });
           const result = await resp.json().catch(() => ({}));
-          if (!resp.ok) { updateStatus(result.error || 'Unable to send verification link.', true); sendButton.disabled = false; sendButton.textContent = 'Verify Email'; return; }
+          if (!resp.ok) { updateStatus(result.error || 'Unable to verify email.', true); sendButton.disabled = false; sendButton.textContent = 'Verify Email'; return; }
 
+          // Check if user is already verified (account recovery)
+          if (!result.requiresVerification) {
+            // User is already verified - store auth and initialize
+            storageSet({ 
+              email: emailValue, 
+              verified: true,
+              jwtToken: result.accessToken,
+              plan: result.plan,
+              trialUsed: result.trialUsed,
+              trialEndsAt: result.trialEndsAt,
+              isPro: result.isPro
+            }, () => {
+              cardEl.innerHTML = `
+                <img src="${logoUrl}" class="blocker-logo" />
+                <div class="blocker-title">Welcome Back!</div>
+                <div class="blocker-subtitle" style="font-size: 14px; color: #334155;">Account validated successfully for <b>${emailValue}</b>.</div>
+                <div class="blocker-subtitle" style="font-size: 13px; color: #64748b; margin-top: 10px;">Loading your settings...</div>
+                <div id="waqr-activate-status" class="blocker-status" style="color: #25D366;">Initializing...</div>
+              `;
+              setTimeout(() => { hostEl.remove(); initializeExtension(); }, 1500);
+            });
+            return;
+          }
+
+          // User needs verification - show verification sent message
           storageSet({ email: emailValue, verified: false }, () => {
             // Update UI to show the email has been sent
             cardEl.innerHTML = `

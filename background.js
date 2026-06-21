@@ -379,7 +379,7 @@ function resetUsageIfNeeded(data) {
 }
 
 function canUseFeature(data, feature) {
-  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0 };
+  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, trial_aiReply: 0, trial_improve: 0 };
   
   // Pro limits: 200 combined actions per day
   if (data.plan === 'pro') {
@@ -388,15 +388,15 @@ function canUseFeature(data, feature) {
     return true;
   }
 
-  // Trial logic: 100/day
+  // Trial logic: 200/day (same as pro)
   if (data.plan === 'trial') {
     const trialEnd = data.trialEndsAt || data.trialEnd;
     if (trialEnd && new Date() > new Date(trialEnd)) {
       storageSet({ plan: 'free' });
       return false;
     }
-    const totalTrialActions = (usage.trial_aiReply || usage.free_aiReply || 0) + (usage.trial_improve || usage.free_improve || 0);
-    if (totalTrialActions >= 100) return false;
+    const totalTrialActions = (usage.trial_aiReply || 0) + (usage.trial_improve || 0);
+    if (totalTrialActions >= 200) return false;
     return true;
   }
 
@@ -412,9 +412,17 @@ function canUseFeature(data, feature) {
 
 async function incrementUsage(feature) {
   const data = await storageGet(['usage', 'plan']);
-  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, lastReset: '' };
+  const usage = data.usage || { free_aiReply: 0, free_improve: 0, pro_aiReply: 0, pro_improve: 0, trial_aiReply: 0, trial_improve: 0, lastReset: '' };
   
-  const planPrefix = data.plan === 'pro' ? 'pro_' : 'free_';
+  let planPrefix;
+  if (data.plan === 'pro') {
+    planPrefix = 'pro_';
+  } else if (data.plan === 'trial') {
+    planPrefix = 'trial_';
+  } else {
+    planPrefix = 'free_';
+  }
+  
   const planKey = `${planPrefix}${feature}`;
 
   if (usage[planKey] !== undefined) usage[planKey]++;
