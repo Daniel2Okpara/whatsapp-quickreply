@@ -24,6 +24,7 @@ const {
 } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const handshakeController = require('../controllers/handshake.controller');
+const paddleController = require('../controllers/paddle.controller');
 
 router.post('/register', register);
 router.post('/login', login);
@@ -67,5 +68,8 @@ router.delete('/delete-account', protect, deleteAccount);
 // Trial and Licensing endpoints
 router.post('/start-trial', protect, startTrial);
 router.get('/license/status', protect, licenseStatus);
+
+// Paddle Customer Portal
+router.get('/customer-portal', protect, paddleController.getCustomerPortalUrl);
 
 module.exports = router;

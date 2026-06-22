@@ -208,3 +208,47 @@ exports.handleWebhook = async (req, res) => {
     return res.status(500).send('error');
   }
 };
+
+exports.getCustomerPortalUrl = async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ error: 'email required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!user.paddleCustomerId) {
+      return res.status(400).json({ error: 'No active subscription found' });
+    }
+
+    // Generate customer portal URL using Paddle API
+    const paddleApiKey = process.env.PADDLE_API_KEY;
+    if (!paddleApiKey) {
+      return res.status(500).json({ error: 'Paddle API key not configured' });
+    }
+
+    const response = await fetch('https://api.paddle.com/customer-portal', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${paddleApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        customer_id: user.paddleCustomerId,
+        return_url: 'https://www.wa-quick-reply.com/#pricing'
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[Paddle] Failed to generate customer portal URL:', error);
+      return res.status(500).json({ error: 'Failed to generate customer portal URL' });
+    }
+
+    const data = await response.json();
+    return res.json({ url: data.url });
+  } catch (err) {
+    console.error('[Paddle] getCustomerPortalUrl error:', err);
+    return res.status(500).json({ error: 'server_error', details: err.message });
+  }
+};
