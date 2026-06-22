@@ -551,6 +551,15 @@ exports.getAccountStatus = async (req, res) => {
       await user.save();
     }
     
+    // Auto-downgrade if subscription has expired
+    if (subscriptionExpired && user.plan === 'pro') {
+      console.log(`[AccountStatus] Subscription expired for ${user.email}, downgrading to free`);
+      user.plan = 'free';
+      user.subscriptionStatus = 'expired';
+      user.isPro = false;
+      await user.save();
+    }
+    
     // Determine what action to show
     let action = 'upgrade'; // default
     if (subscriptionActive) {
