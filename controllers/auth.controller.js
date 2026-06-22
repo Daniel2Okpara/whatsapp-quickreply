@@ -662,6 +662,8 @@ exports.getProfile = async (req, res) => {
         free_improve: 0,
         pro_aiReply: 0,
         pro_improve: 0,
+        trial_aiReply: 0,
+        trial_improve: 0,
         lastReset: new Date().toISOString().split('T')[0]
       },
       // Feature flags
@@ -675,6 +677,33 @@ exports.getProfile = async (req, res) => {
   } catch (error) {
     console.error('Profile fetch error', error);
     return res.status(500).json({ error: 'Server error fetching profile' });
+  }
+};
+
+exports.syncUsage = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) return res.status(401).json({ error: 'Session required' });
+    
+    const { usage } = req.body;
+    if (!usage) return res.status(400).json({ error: 'Usage data required' });
+    
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    // Merge usage data, preserving existing fields
+    user.usage = {
+      ...user.usage,
+      ...usage
+    };
+    
+    await user.save();
+    
+    console.log(`[Usage] Usage synced for user: ${user.email}`, user.usage);
+    
+    return res.json({ success: true, usage: user.usage });
+  } catch (error) {
+    console.error('Sync usage error', error);
+    return res.status(500).json({ error: 'Server error syncing usage' });
   }
 };
 

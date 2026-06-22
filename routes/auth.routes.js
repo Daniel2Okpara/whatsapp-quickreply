@@ -19,7 +19,8 @@ const {
   startTrial,
   licenseStatus,
   getAccountStatus,
-  verificationStatus
+  verificationStatus,
+  syncUsage
 } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const handshakeController = require('../controllers/handshake.controller');
@@ -53,6 +54,9 @@ router.get('/handshake/:token', handshakeController.consumeHandshake);
 // Template Sync
 router.post('/sync-templates', protect, syncTemplates);
 router.get('/get-templates', protect, getTemplates);
+
+// Usage Sync
+router.post('/sync-usage', protect, syncUsage);
 
 // Features & Settings
 router.post('/update-features', protect, updateFeatures);
