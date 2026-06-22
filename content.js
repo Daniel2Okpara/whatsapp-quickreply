@@ -1856,10 +1856,12 @@
         maxCount = 10; // Free limit
       }
 
-      shadow.getElementById('waqr-usage-ai-count').textContent = aiCount;
+      shadow.getElementById('waqr-usage-ai-count').textContent = `${aiCount}/${maxCount}`;
       shadow.getElementById('waqr-usage-ai-fill').style.width = (aiCount / maxCount * 100) + '%';
-      shadow.getElementById('waqr-usage-improve-count').textContent = improveCount;
+      shadow.getElementById('waqr-usage-improve-count').textContent = `${improveCount}/${maxCount}`;
       shadow.getElementById('waqr-usage-improve-fill').style.width = (improveCount / maxCount * 100) + '%';
+      
+      console.log('[UI] Usage display - aiCount:', aiCount, 'improveCount:', improveCount, 'maxCount:', maxCount, 'isTrial:', isTrial);
 
       if (isTrial && trialEnd) {
         const left = new Date(trialEnd) - new Date();

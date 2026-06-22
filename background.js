@@ -13,14 +13,38 @@ function storageSet(obj) {
   return new Promise(resolve => chrome.storage.local.set(obj, resolve));
 }
 
+// Sync storage helpers (persists across uninstalls)
+function syncStorageGet(keys) {
+  return new Promise(resolve => chrome.storage.sync.get(keys, resolve));
+}
+function syncStorageSet(obj) {
+  return new Promise(resolve => chrome.storage.sync.set(obj, resolve));
+}
+
 // Generate and store persistent deviceId
 async function getOrCreateDeviceId() {
+  // First check sync storage (persists across uninstalls)
+  const syncData = await syncStorageGet(['deviceId']);
+  if (syncData.deviceId) {
+    console.log('[Device] Retrieved deviceId from sync storage:', syncData.deviceId);
+    // Also save to local storage for faster access
+    await storageSet({ deviceId: syncData.deviceId });
+    return syncData.deviceId;
+  }
+  
+  // Then check local storage
   const data = await storageGet(['deviceId']);
-  if (data.deviceId) return data.deviceId;
+  if (data.deviceId) {
+    console.log('[Device] Retrieved deviceId from local storage:', data.deviceId);
+    // Also save to sync storage for persistence
+    await syncStorageSet({ deviceId: data.deviceId });
+    return data.deviceId;
+  }
   
   // Generate new deviceId
   const deviceId = 'waqr_' + crypto.randomUUID();
   await storageSet({ deviceId });
+  await syncStorageSet({ deviceId });
   console.log('[Device] Generated new deviceId:', deviceId);
   return deviceId;
 }
