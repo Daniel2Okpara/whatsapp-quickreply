@@ -564,6 +564,10 @@ exports.getAccountStatus = async (req, res) => {
     let action = 'upgrade'; // default
     if (subscriptionActive) {
       action = 'manage';
+    } else if (user.plan === 'free' && !user.trialUsed) {
+      action = 'start_trial';
+    } else if (user.plan === 'free' && user.trialUsed) {
+      action = 'upgrade';
     } else if (!user.trialUsed && !subscriptionActive) {
       action = 'start_trial';
     } else if (user.trialUsed && !subscriptionActive) {
