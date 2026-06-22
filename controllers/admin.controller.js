@@ -1,5 +1,6 @@
 const User = require('../models/user.model');
 const WebhookLog = require('../models/webhook.model');
+const Device = require('../models/device.model');
 const paddleController = require('./paddle.controller');
 const querystring = require('querystring');
 
@@ -712,5 +713,42 @@ exports.downgradeplan = async (req, res) => {
   } catch (err) {
     console.error('[Admin] downgradeplan error', err);
     return res.status(500).json({ error: 'server_error', details: err.message });
+  }
+};
+
+exports.clearDevices = async (req, res) => {
+  try {
+    const { confirm } = req.body;
+    if (confirm !== 'DELETE_ALL_DEVICES') {
+      return res.status(400).json({ error: 'Confirmation required. Send confirm: "DELETE_ALL_DEVICES" to proceed.' });
+    }
+
+    const result = await Device.deleteMany({});
+    console.log(`[Admin] Cleared ${result.deletedCount} devices from database`);
+
+    return res.json({ 
+      success: true, 
+      message: `Successfully cleared ${result.deletedCount} devices`,
+      deletedCount: result.deletedCount
+    });
+  } catch (err) {
+    console.error('[Admin] clearDevices error', err);
+    return res.status(500).json({ error: 'server_error', details: err.message });
+  }
+};
+
+exports.listDevices = async (req, res) => {
+  try {
+    const { limit = 100, skip = 0 } = req.query;
+    const devices = await Device.find()
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10))
+      .lean();
+    const total = await Device.countDocuments();
+    return res.json({ devices, total });
+  } catch (err) {
+    console.error('[Admin] listDevices error', err);
+    return res.status(500).json({ error: 'server_error' });
   }
 };

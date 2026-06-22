@@ -20,6 +20,10 @@ router.post('/simulate-webhook', requireAdmin, adminController.simulateWebhook);
 router.get('/webhook-logs', requireAdmin, adminController.listWebhookLogs);
 router.get('/feedback-stats', requireAdmin, adminController.getFeedbackStats);
 
+// Device management routes (Admin only)
+router.get('/devices', requireAdmin, adminController.listDevices);
+router.post('/clear-devices', requireSuperAdmin, adminController.clearDevices);
+
 // Install tracking routes (Admin only)
 router.get('/installs', requireAdmin, installController.listInstalls);
 router.get('/install-stats', requireAdmin, installController.getInstallStats);
