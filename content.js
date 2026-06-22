@@ -1818,6 +1818,9 @@
     const isPro = plan === 'pro';
     const isTrial = plan === 'trial';
     const isFree = plan === 'free' || !plan;
+    
+    console.log('[UI] Plan state - plan:', plan, 'isTrial:', isTrial, 'isFree:', isFree, 'isPro:', isPro);
+    console.log('[UI] Usage data - usage:', usage);
 
     // Badges & Links
     shadow.getElementById('waqr-pro-badge').style.display = isPro ? 'inline-block' : 'none';
@@ -1975,6 +1978,9 @@
           displaySuggestions([response.suggestion]);
           showToast('✅ Reply ready!');
           syncPlanState();
+        } else if (response && response.limitReached) {
+          showToast('⚠️ ' + response.message);
+          showUpgradeModal(response.message);
         } else {
           showToast('⚠️ ' + (response?.error || 'Generation failed.'));
         }
