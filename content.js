@@ -838,6 +838,33 @@
       <button id="waqr-change-email-save" style="background:#27a55e;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;width:100%;font-size:13px;font-weight:600;">Change Email</button>
       <div id="waqr-change-email-error" style="color:#dc2626;font-size:12px;margin-top:6px;display:none;"></div>
     </div>
+
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Subscription</div>
+    <div id="waqr-subscription-info" style="background:#f8fafc;border-radius:8px;padding:10px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:11px;color:#64748b;">Current Plan</span>
+        <span id="waqr-plan-display" style="font-size:12px;font-weight:600;color:#1e293b;">Loading...</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:11px;color:#64748b;">Status</span>
+        <span id="waqr-status-display" style="font-size:12px;font-weight:600;color:#1e293b;">Loading...</span>
+      </div>
+      <div id="waqr-trial-info" style="display:none;margin-bottom:6px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:11px;color:#64748b;">Trial Ends</span>
+          <span id="waqr-trial-ends" style="font-size:12px;font-weight:600;color:#1e293b;"></span>
+        </div>
+      </div>
+      <div id="waqr-billing-info" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:11px;color:#64748b;">Next Billing</span>
+          <span id="waqr-next-billing" style="font-size:12px;font-weight:600;color:#1e293b;"></span>
+        </div>
+      </div>
+    </div>
+    <button id="waqr-manage-subscription" style="width:100%;background:#27a55e;color:white;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;display:none;">Manage Subscription</button>
+    <div id="waqr-cancel-message" style="font-size:10px;color:#64748b;margin-top:6px;display:none;text-align:center;">You can cancel anytime. Your plan remains active until the billing period ends.</div>
   `;
   shadow.appendChild(settingsPanel);
 
@@ -850,6 +877,9 @@
       
       const emailDisplay = shadow.getElementById('waqr-email-display');
       if (emailDisplay) emailDisplay.textContent = r.email || '';
+
+      // Load subscription info
+      loadSubscriptionInfo(r.email);
 
       const toneDefault      = s.tone       || 'casual';
       const styleDefault     = s.replyStyle || 'balanced';
@@ -873,6 +903,77 @@
         learnEl.disabled = isFree;
       }
     });
+  }
+
+  async function loadSubscriptionInfo(email) {
+    if (!email) return;
+
+    try {
+      const token = await getStoredAuthToken();
+      const response = await fetch(`${BACKEND_URL}/auth/account-status?email=${encodeURIComponent(email)}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      const data = await response.json();
+
+      if (data.exists) {
+        const planDisplay = shadow.getElementById('waqr-plan-display');
+        const statusDisplay = shadow.getElementById('waqr-status-display');
+        const trialInfo = shadow.getElementById('waqr-trial-info');
+        const trialEnds = shadow.getElementById('waqr-trial-ends');
+        const billingInfo = shadow.getElementById('waqr-billing-info');
+        const nextBilling = shadow.getElementById('waqr-next-billing');
+        const manageBtn = shadow.getElementById('waqr-manage-subscription');
+        const cancelMsg = shadow.getElementById('waqr-cancel-message');
+
+        if (planDisplay) planDisplay.textContent = data.plan || 'Free';
+        if (statusDisplay) statusDisplay.textContent = data.subscriptionStatus || 'Active';
+
+        if (data.trialEndsAt) {
+          if (trialInfo) trialInfo.style.display = 'block';
+          if (trialEnds) trialEnds.textContent = new Date(data.trialEndsAt).toLocaleDateString();
+        }
+
+        if (data.subscriptionEndsAt) {
+          if (billingInfo) billingInfo.style.display = 'block';
+          if (nextBilling) nextBilling.textContent = new Date(data.subscriptionEndsAt).toLocaleDateString();
+        }
+
+        if (data.plan === 'pro' && data.paddleCustomerId) {
+          if (manageBtn) {
+            manageBtn.style.display = 'block';
+            manageBtn.onclick = async () => {
+              try {
+                const token = await getStoredAuthToken();
+                const response = await fetch(`${BACKEND_URL}/auth/customer-portal?email=${encodeURIComponent(email)}`, {
+                  headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                const portalData = await response.json();
+                
+                if (portalData.url) {
+                  window.open(portalData.url, '_blank');
+                } else {
+                  alert('Failed to open customer portal: ' + (portalData.error || 'Unknown error'));
+                }
+              } catch (e) {
+                alert('Failed to open customer portal: ' + e.message);
+              }
+            };
+          }
+          if (cancelMsg) cancelMsg.style.display = 'block';
+        } else if (data.plan === 'trial') {
+          if (manageBtn) {
+            manageBtn.style.display = 'block';
+            manageBtn.textContent = 'Upgrade to Pro';
+            manageBtn.onclick = () => {
+              window.open('https://www.wa-quick-reply.com/#pricing', '_blank');
+            };
+          }
+          if (cancelMsg) cancelMsg.style.display = 'block';
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load subscription info:', e);
+    }
   }
 
   // Wire settings button
