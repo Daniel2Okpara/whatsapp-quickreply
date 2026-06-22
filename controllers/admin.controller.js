@@ -752,3 +752,47 @@ exports.listDevices = async (req, res) => {
     return res.status(500).json({ error: 'server_error' });
   }
 };
+
+exports.deleteDevice = async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+    if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
+
+    const result = await Device.deleteOne({ deviceId });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    console.log(`[Admin] Deleted device: ${deviceId}`);
+
+    return res.json({ 
+      success: true, 
+      message: `Device deleted successfully`,
+      deletedCount: result.deletedCount
+    });
+  } catch (err) {
+    console.error('[Admin] deleteDevice error', err);
+    return res.status(500).json({ error: 'server_error', details: err.message });
+  }
+};
+
+exports.deleteMultipleDevices = async (req, res) => {
+  try {
+    const { deviceIds } = req.body;
+    if (!deviceIds || !Array.isArray(deviceIds) || deviceIds.length === 0) {
+      return res.status(400).json({ error: 'deviceIds array required' });
+    }
+
+    const result = await Device.deleteMany({ deviceId: { $in: deviceIds } });
+    console.log(`[Admin] Deleted ${result.deletedCount} devices`);
+
+    return res.json({ 
+      success: true, 
+      message: `Successfully deleted ${result.deletedCount} devices`,
+      deletedCount: result.deletedCount
+    });
+  } catch (err) {
+    console.error('[Admin] deleteMultipleDevices error', err);
+    return res.status(500).json({ error: 'server_error', details: err.message });
+  }
+};

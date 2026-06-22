@@ -22,6 +22,8 @@ router.get('/feedback-stats', requireAdmin, adminController.getFeedbackStats);
 
 // Device management routes (Admin only)
 router.get('/devices', requireAdmin, adminController.listDevices);
+router.post('/delete-device', requireAdmin, adminController.deleteDevice);
+router.post('/delete-multiple-devices', requireAdmin, adminController.deleteMultipleDevices);
 router.post('/clear-devices', requireSuperAdmin, adminController.clearDevices);
 
 // Install tracking routes (Admin only)
