@@ -526,6 +526,8 @@ exports.getAccountStatus = async (req, res) => {
       });
     }
     
+    console.log(`[AccountStatus] Fetching for ${user.email} - current plan: ${user.plan}, trialActive: ${user.trialActive}, trialEndsAt: ${user.trialEndsAt}`);
+    
     // Link device if provided
     if (deviceId) {
       await linkDeviceToUser(user, deviceId);
@@ -541,6 +543,13 @@ exports.getAccountStatus = async (req, res) => {
                             user.subscriptionEndsAt && 
                             new Date() < user.subscriptionEndsAt;
     const subscriptionExpired = user.subscriptionEndsAt && new Date() > user.subscriptionEndsAt;
+    
+    // Fix plan if trial is active but plan is not 'trial'
+    if (trialActive && user.plan !== 'trial') {
+      console.log(`[AccountStatus] Trial is active but plan is ${user.plan}. Fixing to 'trial'...`);
+      user.plan = 'trial';
+      await user.save();
+    }
     
     // Determine what action to show
     let action = 'upgrade'; // default
@@ -603,6 +612,8 @@ exports.getProfile = async (req, res) => {
     const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
     
+    console.log(`[Profile] Fetching profile for ${user.email} - current plan: ${user.plan}, trialActive: ${user.trialActive}, trialEndsAt: ${user.trialEndsAt}`);
+    
     // Data consistency check: Fix plan/isPro mismatch
     let needsSave = false;
     if (user.isPro && user.plan !== 'pro') {
@@ -636,9 +647,17 @@ exports.getProfile = async (req, res) => {
       }
     }
     
+    // If trial is active and plan is not 'trial', fix it
+    const trialActive = user.trialActive && user.trialEndsAt && new Date() < new Date(user.trialEndsAt);
+    if (trialActive && user.plan !== 'trial') {
+      console.log(`[Profile] Trial is active but plan is ${user.plan}. Fixing to 'trial'...`);
+      user.plan = 'trial';
+      needsSave = true;
+    }
+    
     if (needsSave) {
       await user.save();
-      console.log(`[Profile] Data consistency fixed for ${user.email}`);
+      console.log(`[Profile] Data consistency fixed for ${user.email} - final plan: ${user.plan}`);
     }
     
     // Ensure response includes all fields needed by extension for sync
