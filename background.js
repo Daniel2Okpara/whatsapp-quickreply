@@ -377,6 +377,11 @@ function resetUsageIfNeeded(data) {
     data.usage.lastReset = today;
     storageSet({ usage: data.usage });
   }
+  
+  // Ensure trial fields exist even if not resetting
+  if (data.usage.trial_aiReply === undefined) data.usage.trial_aiReply = 0;
+  if (data.usage.trial_improve === undefined) data.usage.trial_improve = 0;
+  
   return data;
 }
 
@@ -761,7 +766,9 @@ async function ensureUsageInitialized() {
         free_aiReply: 0, 
         free_improve: 0, 
         pro_aiReply: 0, 
-        pro_improve: 0, 
+        pro_improve: 0,
+        trial_aiReply: 0,
+        trial_improve: 0,
         lastReset: new Date().toISOString().split('T')[0] 
       }
     });
