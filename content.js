@@ -682,7 +682,7 @@
         <div class="waqr-usage-container" id="waqr-usage-templates" style="display:none;">
           <div class="waqr-usage-item">
             <span>Improve Used</span>
-            <span class="waqr-usage-val"><span id="waqr-usage-improve-count">0</span>/10</span>
+            <span class="waqr-usage-val"><span id="waqr-usage-improve-count">0/10</span></span>
           </div>
           <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-improve-fill" style="width: 0%;"></div></div>
         </div>
@@ -708,17 +708,7 @@
         <div class="waqr-usage-container" id="waqr-usage-ai" style="display:none;">
           <div class="waqr-usage-item">
             <span>AI Replies Used</span>
-            <span class="waqr-usage-val"><span id="waqr-usage-ai-count">0</span>/10</span>
-          </div>
-          <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-ai-fill" style="width: 0%;"></div></div>
-          <div id="waqr-trial-countdown" style="font-size:10px; color:#94a3b8; margin-top:6px; display:none;"></div>
-        </div>
-
-      <div class='waqr-section' data-section='ai'>
-        <div class="waqr-usage-container" id="waqr-usage-ai" style="display:none;">
-          <div class="waqr-usage-item">
-            <span>AI Replies Used</span>
-            <span class="waqr-usage-val"><span id="waqr-usage-ai-count">0</span>/10</span>
+            <span class="waqr-usage-val"><span id="waqr-usage-ai-count">0/10</span></span>
           </div>
           <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-ai-fill" style="width: 0%;"></div></div>
           <div id="waqr-trial-countdown" style="font-size:10px; color:#94a3b8; margin-top:6px; display:none;"></div>
