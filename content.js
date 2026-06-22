@@ -682,7 +682,7 @@
         <div class="waqr-usage-container" id="waqr-usage-templates" style="display:none;">
           <div class="waqr-usage-item">
             <span>Improve Used</span>
-            <span class="waqr-usage-val"><span id="waqr-usage-improve-count">0</span>/10</span>
+            <span class="waqr-usage-val"><span id="waqr-usage-improve-count">0/10</span></span>
           </div>
           <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-improve-fill" style="width: 0%;"></div></div>
         </div>
@@ -708,17 +708,7 @@
         <div class="waqr-usage-container" id="waqr-usage-ai" style="display:none;">
           <div class="waqr-usage-item">
             <span>AI Replies Used</span>
-            <span class="waqr-usage-val"><span id="waqr-usage-ai-count">0</span>/10</span>
-          </div>
-          <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-ai-fill" style="width: 0%;"></div></div>
-          <div id="waqr-trial-countdown" style="font-size:10px; color:#94a3b8; margin-top:6px; display:none;"></div>
-        </div>
-
-      <div class='waqr-section' data-section='ai'>
-        <div class="waqr-usage-container" id="waqr-usage-ai" style="display:none;">
-          <div class="waqr-usage-item">
-            <span>AI Replies Used</span>
-            <span class="waqr-usage-val"><span id="waqr-usage-ai-count">0</span>/10</span>
+            <span class="waqr-usage-val"><span id="waqr-usage-ai-count">0/10</span></span>
           </div>
           <div class="waqr-usage-bar"><div class="waqr-usage-fill" id="waqr-usage-ai-fill" style="width: 0%;"></div></div>
           <div id="waqr-trial-countdown" style="font-size:10px; color:#94a3b8; margin-top:6px; display:none;"></div>
@@ -1856,10 +1846,12 @@
         maxCount = 10; // Free limit
       }
 
-      shadow.getElementById('waqr-usage-ai-count').textContent = aiCount;
+      shadow.getElementById('waqr-usage-ai-count').textContent = `${aiCount}/${maxCount}`;
       shadow.getElementById('waqr-usage-ai-fill').style.width = (aiCount / maxCount * 100) + '%';
-      shadow.getElementById('waqr-usage-improve-count').textContent = improveCount;
+      shadow.getElementById('waqr-usage-improve-count').textContent = `${improveCount}/${maxCount}`;
       shadow.getElementById('waqr-usage-improve-fill').style.width = (improveCount / maxCount * 100) + '%';
+      
+      console.log('[UI] Usage display - aiCount:', aiCount, 'improveCount:', improveCount, 'maxCount:', maxCount, 'isTrial:', isTrial);
 
       if (isTrial && trialEnd) {
         const left = new Date(trialEnd) - new Date();
