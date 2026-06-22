@@ -796,3 +796,28 @@ exports.deleteMultipleDevices = async (req, res) => {
     return res.status(500).json({ error: 'server_error', details: err.message });
   }
 };
+
+exports.deleteMultipleUsers = async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ error: 'user_ids_required' });
+    }
+    
+    console.log(`[Admin] Deleting ${userIds.length} users:`, userIds);
+    
+    const result = await User.deleteMany({ _id: { $in: userIds } });
+    
+    console.log(`[Admin] Successfully deleted ${result.deletedCount} users`);
+    
+    return res.json({ 
+      success: true, 
+      message: `Successfully deleted ${result.deletedCount} users`,
+      deletedCount: result.deletedCount
+    });
+  } catch (err) {
+    console.error('[Admin] deleteMultipleUsers error', err);
+    return res.status(500).json({ error: 'server_error', details: err.message });
+  }
+};

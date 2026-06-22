@@ -19,6 +19,7 @@ router.post('/downgrade-plan', requireAdmin, adminController.downgradeplan);
 router.post('/simulate-webhook', requireAdmin, adminController.simulateWebhook);
 router.get('/webhook-logs', requireAdmin, adminController.listWebhookLogs);
 router.get('/feedback-stats', requireAdmin, adminController.getFeedbackStats);
+router.post('/delete-multiple-users', requireSuperAdmin, adminController.deleteMultipleUsers);
 
 // Device management routes (Admin only)
 router.get('/devices', requireAdmin, adminController.listDevices);
