@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WA QuickReply",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Smart AI replies and schedules for WhatsApp Web (Reliability Build).",
   "permissions": [
     "storage"
