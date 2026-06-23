@@ -628,6 +628,29 @@
     }
     .waqr-transcribe-btn-chat:hover { transform: scale(1.05); background: #9333ea; }
     .waqr-transcribe-btn-chat.loading { background: #d1d5db; color: #4b5563; cursor: wait; }
+
+    /* Update Banner */
+    .waqr-update-banner {
+      position: fixed; top: 80px; right: 20px; z-index: 2000001;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white; padding: 16px 20px; border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
+      display: flex; align-items: center; gap: 12px;
+      font-size: 13px; font-weight: 600;
+      animation: slideIn 0.3s ease-out;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .waqr-update-banner button {
+      background: white; color: #059669; border: none;
+      padding: 8px 16px; border-radius: 8px; font-weight: 700;
+      cursor: pointer; font-size: 12px; transition: 0.2s;
+    }
+    .waqr-update-banner button:hover {
+      background: #f0fdf4; transform: scale(1.05);
+    }
   `;
   shadow.appendChild(styleEl);
 
@@ -643,6 +666,17 @@
     </div>
   `;
   shadow.appendChild(modalOverlay);
+
+  // Update Banner
+  const updateBanner = document.createElement('div');
+  updateBanner.className = 'waqr-update-banner';
+  updateBanner.id = 'waqr-update-banner';
+  updateBanner.style.display = 'none';
+  updateBanner.innerHTML = `
+    <span>🔄 Update available</span>
+    <button id="waqr-reload-btn">Reload Now</button>
+  `;
+  shadow.appendChild(updateBanner);
 
   // ============================================================================
   // 2. UI COMPONENTS
@@ -2661,6 +2695,34 @@
       }
     } else {
       initializeExtension();
+    }
+
+    // Check for extension updates
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes.updateAvailable) {
+        const banner = shadow.getElementById('waqr-update-banner');
+        if (changes.updateAvailable.newValue === true) {
+          banner.style.display = 'flex';
+        } else {
+          banner.style.display = 'none';
+        }
+      }
+    });
+
+    // Initial check for update availability
+    chrome.storage.local.get(['updateAvailable'], (data) => {
+      if (data.updateAvailable) {
+        const banner = shadow.getElementById('waqr-update-banner');
+        banner.style.display = 'flex';
+      }
+    });
+
+    // Handle reload button click
+    const reloadBtn = shadow.getElementById('waqr-reload-btn');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', () => {
+        chrome.runtime.reload();
+      });
     }
   });
 })();

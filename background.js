@@ -844,6 +844,42 @@ chrome.runtime.onStartup.addListener(async () => {
   ensureUsageInitialized();
 });
 
+// Listen for extension updates
+chrome.runtime.onUpdateAvailable.addListener((details) => {
+  console.log('[Update] New version available:', details.version);
+  
+  // Set badge to notify user
+  chrome.action.setBadgeText({ text: '!' });
+  chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
+  chrome.action.setTitle({ title: 'Update available! Click to reload' });
+  
+  // Store update info for content script to show banner
+  chrome.storage.local.set({
+    updateAvailable: true,
+    newVersion: details.version
+  });
+});
+
+// Handle extension icon click to reload when update is available
+chrome.action.onClicked.addListener(async (tab) => {
+  const data = await storageGet(['updateAvailable']);
+  if (data.updateAvailable) {
+    // Reload the extension to apply update
+    chrome.runtime.reload();
+  }
+});
+
+// Handle extension install/update
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'update') {
+    console.log('[Update] Extension updated to:', chrome.runtime.getManifest().version);
+    // Clear update notification after successful update
+    chrome.action.setBadgeText({ text: '' });
+    chrome.action.setTitle({ title: 'WA QuickReply' });
+    chrome.storage.local.remove(['updateAvailable', 'newVersion']);
+  }
+});
+
 // Also track on initial load for existing installs
 trackInstall();
 refreshSubscription();
